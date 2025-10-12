@@ -18,7 +18,3 @@ Function-as-a-service runtime.
   accept requests, start the appropriate container, and pass along request data
   to the running container.
 
-# TODO
-
-- Graceful shutdowns on ctrl-c, ctrl-d kills.
-- Generate domain names for IPs, update DNS records.

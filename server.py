@@ -12,6 +12,7 @@ import select
 import subprocess
 import sys
 import os
+import signal
 
 
 def create_server_socket(host, port):
@@ -50,8 +51,7 @@ def handle_connection(client_sock, client_addr, handler_script):
         # The child now owns it
         client_sock.close()
 
-        # Optionally wait for child (for POC, we'll just let it run)
-        # In production, you'd want proper child process management
+        # No need to wait - SIGCHLD is set to SIG_IGN for automatic reaping
 
     except Exception as e:
         print(f"Error spawning child process: {e}")
@@ -70,6 +70,10 @@ def main():
     if not os.path.exists(handler_script):
         print(f"Error: Handler script not found: {handler_script}")
         sys.exit(1)
+
+    # Set up automatic zombie process reaping
+    # When a child process exits, the OS will automatically reap it
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
     # Create server sockets
     server_sockets = []
