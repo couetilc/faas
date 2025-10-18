@@ -4,8 +4,8 @@ Function-as-a-service runtime.
 
 ## to run
 
-  sudo ifconfig lo0 alias 10.0.0.1 netmask 255.255.255.0
-  sudo ifconfig lo0 alias 10.0.0.2 netmask 255.255.255.0
+  sudo ip addr add 10.0.0.1/24 dev lo
+  sudo ip addr add 10.0.0.2/24 dev lo
   sudo python3 server.py
   python3 test_client.py
 
