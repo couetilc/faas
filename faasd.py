@@ -609,6 +609,11 @@ class ControlAPI(BaseHTTPRequestHandler):
             # Extract to rootfs
             rootfs_path = f"{IMAGES_DIR}/{name}/rootfs"
 
+            # Remove existing rootfs if it exists (to ensure clean update)
+            if os.path.exists(rootfs_path):
+                print(f"[api] Removing existing rootfs at {rootfs_path}")
+                shutil.rmtree(rootfs_path)
+
             # Extract image
             tar_stream = io.BytesIO(tar_data)
             extract_docker_image(tar_stream, rootfs_path)
