@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""
+faas - CLI client for FaaS platform
+
+Commands:
+  faas new <name>       - Deploy Docker image from stdin
+  faas ip <name>        - Get IP address for deployed image
+  faas list             - List all deployed images
+"""
+
+import sys
+import json
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
+FAASD_URL = "http://localhost:8080"
+
+
+def cmd_new(name):
+    """Deploy Docker image from stdin."""
+    print(f"Uploading image '{name}' to FaaS platform...")
+
+    # Read Docker image tarball from stdin
+    tar_data = sys.stdin.buffer.read()
+
+    if not tar_data:
+        print("Error: No data received on stdin")
+        sys.exit(1)
+
+    print(f"Read {len(tar_data)} bytes from stdin")
+
+    # Upload to faasd
+    try:
+        req = Request(
+            f"{FAASD_URL}/api/new",
+            data=tar_data,
+            headers={
+                'X-Image-Name': name,
+                'Content-Type': 'application/octet-stream'
+            },
+            method='POST'
+        )
+
+        with urlopen(req, timeout=60) as response:
+            result = json.loads(response.read().decode())
+            print(f"✓ Deployed {result['name']} at {result['ip']}")
+            print(f"  Command: {result['cmd']}")
+
+    except HTTPError as e:
+        error_msg = e.read().decode() if e.fp else str(e)
+        print(f"Error: {e.code} - {error_msg}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_ip(name):
+    """Get IP address for deployed image."""
+    try:
+        req = Request(f"{FAASD_URL}/api/ip/{name}")
+
+        with urlopen(req) as response:
+            result = json.loads(response.read().decode())
+            print(result['ip'])
+
+    except HTTPError as e:
+        error_msg = e.read().decode() if e.fp else str(e)
+        print(f"Error: {e.code} - {error_msg}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_list():
+    """List all deployed images."""
+    try:
+        req = Request(f"{FAASD_URL}/api/list")
+
+        with urlopen(req) as response:
+            images = json.loads(response.read().decode())
+
+            if not images:
+                print("No images deployed")
+                return
+
+            print(f"{'Name':<20} {'IP':<15} {'Command'}")
+            print("-" * 60)
+
+            for name, metadata in images.items():
+                cmd = ' '.join(metadata['cmd']) if metadata['cmd'] else '(none)'
+                print(f"{name:<20} {metadata['ip']:<15} {cmd}")
+
+    except HTTPError as e:
+        error_msg = e.read().decode() if e.fp else str(e)
+        print(f"Error: {e.code} - {error_msg}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def usage():
+    """Print usage and exit."""
+    print(__doc__)
+    sys.exit(1)
+
+
+def main():
+    if len(sys.argv) < 2:
+        usage()
+
+    command = sys.argv[1]
+
+    if command == 'new':
+        if len(sys.argv) != 3:
+            print("Usage: faas new <name>")
+            sys.exit(1)
+        cmd_new(sys.argv[2])
+
+    elif command == 'ip':
+        if len(sys.argv) != 3:
+            print("Usage: faas ip <name>")
+            sys.exit(1)
+        cmd_ip(sys.argv[2])
+
+    elif command == 'list':
+        cmd_list()
+
+    else:
+        print(f"Unknown command: {command}")
+        usage()
+
+
+if __name__ == '__main__':
+    main()
