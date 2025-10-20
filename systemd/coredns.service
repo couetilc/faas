@@ -1,0 +1,40 @@
+[Unit]
+Description=CoreDNS DNS Server for FaaS Platform
+Documentation=https://coredns.io/manual/toc/
+After=network-online.target wg-faas.service
+Wants=network-online.target
+Requires=wg-faas.service
+PartOf=faasd.service
+
+[Service]
+Type=simple
+User=coredns
+Group=coredns
+
+# CoreDNS binary and configuration
+ExecStart=/usr/local/bin/coredns -conf /etc/coredns/Corefile
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/faasd/dns
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Resource limits
+LimitNOFILE=1048576
+LimitNPROC=512
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=coredns
+
+[Install]
+WantedBy=multi-user.target

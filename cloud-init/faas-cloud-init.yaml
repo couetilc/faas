@@ -1,0 +1,443 @@
+#cloud-config
+# FaaS Platform Cloud-Init Configuration
+#
+# This cloud-init configuration sets up a complete FaaS platform deployment
+# on a fresh cloud instance (AWS, GCP, Azure, DigitalOcean, etc.)
+#
+# Usage:
+#   1. Save this file as user-data when creating the instance
+#   2. Wait 5-10 minutes for installation to complete
+#   3. SSH to the instance and check: sudo systemctl status faasd
+#   4. Get server public key: sudo cat /etc/wireguard/server_public.key
+#   5. Connect from client: ./faas vpn connect
+
+# Set hostname
+hostname: faas-platform
+fqdn: faas-platform.example.com
+
+# Set timezone
+timezone: UTC
+
+# Create users
+users:
+  - name: faas
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample... # Replace with your SSH public key
+
+  - name: coredns
+    system: true
+    shell: /bin/false
+    home: /var/lib/coredns
+
+# Configure package management
+package_update: true
+package_upgrade: true
+package_reboot_if_required: false
+
+# Install required packages
+packages:
+  # Python
+  - python3
+  - python3-pip
+
+  # Container runtime
+  - runc
+  - docker.io
+
+  # Network tools
+  - wireguard
+  - wireguard-tools
+  - iproute2
+  - iptables
+  - dnsutils
+  - net-tools
+
+  # System utilities
+  - curl
+  - wget
+  - git
+  - jq
+  - htop
+  - vim
+
+  # Build tools (for building images)
+  - build-essential
+
+# Kernel modules
+bootcmd:
+  - modprobe wireguard
+  - modprobe ip6_tables
+
+# System configuration
+write_files:
+  # WireGuard server configuration (private key will be generated below)
+  - path: /etc/wireguard/wg-faas.conf.template
+    permissions: '0600'
+    owner: root:root
+    content: |
+      [Interface]
+      PrivateKey = __PRIVATE_KEY__
+      ListenPort = 51820
+
+      # Peers will be added dynamically by faasd
+
+  # CoreDNS Corefile configuration
+  - path: /etc/coredns/Corefile
+    permissions: '0644'
+    owner: root:root
+    content: |
+      faas:53 {
+          bind fd00:faa5:0:100::1
+          file /var/lib/faasd/dns/faas.db {
+              reload 2s
+          }
+          log
+          errors
+      }
+
+  # Initial DNS zone file
+  - path: /var/lib/faasd/dns/faas.db
+    permissions: '0644'
+    owner: coredns:coredns
+    content: |
+      $ORIGIN faas.
+      $TTL 60
+      @       IN  SOA ns.faas. admin.faas. (
+                  2024010100  ; Serial
+                  3600        ; Refresh
+                  1800        ; Retry
+                  604800      ; Expire
+                  60 )        ; Minimum TTL
+
+      @       IN  NS  ns.faas.
+      ns      IN  AAAA  fd00:faa5:0:100::1
+
+  # Systemd service: wg-faas
+  - path: /etc/systemd/system/wg-faas.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=WireGuard VPN for FaaS Platform
+      After=network-online.target nss-lookup.target
+      Wants=network-online.target nss-lookup.target
+      PartOf=faasd.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+
+      # Load WireGuard kernel module
+      ExecStartPre=/sbin/modprobe wireguard
+
+      # Create WireGuard interface
+      ExecStartPre=/usr/bin/ip link add wg-faas type wireguard
+
+      # Assign IPv6 to WireGuard interface (server address)
+      ExecStartPre=/usr/bin/ip -6 addr add fd00:faa5:0:100::1/64 dev wg-faas
+
+      # Configure WireGuard with server settings
+      ExecStart=/usr/bin/wg setconf wg-faas /etc/wireguard/wg-faas.conf
+
+      # Bring interface up
+      ExecStartPost=/usr/bin/ip link set wg-faas up
+
+      # Add route for entire FaaS network through wg-faas
+      ExecStartPost=/usr/bin/ip -6 route add fd00:faa5::/32 dev wg-faas
+
+      # Enable IPv6 forwarding
+      ExecStartPost=/usr/sbin/sysctl -w net.ipv6.conf.all.forwarding=1
+
+      # Tear down on stop
+      ExecStop=/usr/bin/ip link del wg-faas
+
+      # Security
+      PrivateTmp=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      ReadWritePaths=/etc/wireguard
+      NoNewPrivileges=yes
+
+      # Network
+      RestartSec=5s
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # Systemd service: coredns
+  - path: /etc/systemd/system/coredns.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=CoreDNS DNS Server for FaaS Platform
+      Documentation=https://coredns.io/manual/toc/
+      After=network-online.target wg-faas.service
+      Wants=network-online.target
+      Requires=wg-faas.service
+      PartOf=faasd.service
+
+      [Service]
+      Type=simple
+      User=coredns
+      Group=coredns
+
+      # CoreDNS binary and configuration
+      ExecStart=/usr/local/bin/coredns -conf /etc/coredns/Corefile
+
+      # Restart policy
+      Restart=on-failure
+      RestartSec=5s
+
+      # Security hardening
+      PrivateTmp=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      ReadWritePaths=/var/lib/faasd/dns
+      NoNewPrivileges=yes
+      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+      # Resource limits
+      LimitNOFILE=1048576
+      LimitNPROC=512
+
+      # Logging
+      StandardOutput=journal
+      StandardError=journal
+      SyslogIdentifier=coredns
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # Systemd service: faasd
+  - path: /etc/systemd/system/faasd.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=FaaS Platform Daemon
+      Documentation=https://github.com/connorcouetil/faas
+      After=network-online.target wg-faas.service coredns.service
+      Wants=network-online.target
+      Requires=wg-faas.service coredns.service
+
+      [Service]
+      Type=simple
+      User=root
+      Group=root
+
+      # Working directory
+      WorkingDirectory=/var/lib/faasd
+
+      # Start the daemon
+      ExecStart=/usr/bin/python3 /usr/lib/faasd/faasd.py
+
+      # Restart policy
+      Restart=on-failure
+      RestartSec=5s
+      StartLimitInterval=300s
+      StartLimitBurst=5
+
+      # Security
+      PrivateTmp=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      ReadWritePaths=/var/lib/faasd /run/faasd
+      NoNewPrivileges=no
+
+      # Resource limits
+      LimitNOFILE=1048576
+      LimitNPROC=infinity
+
+      # Logging
+      StandardOutput=journal
+      StandardError=journal
+      SyslogIdentifier=faasd
+
+      # Environment
+      Environment="PYTHONUNBUFFERED=1"
+
+      # Cleanup on stop
+      ExecStopPost=/bin/bash -c 'for ip in $(/usr/bin/ip -6 addr show dev wg-faas | /usr/bin/grep "inet6 fd00:faa5:1:" | /usr/bin/awk "{print \\$2}"); do /usr/bin/ip -6 addr del "$ip" dev wg-faas 2>/dev/null || true; done'
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # Sysctl configuration for IPv6 forwarding
+  - path: /etc/sysctl.d/99-faas-ipv6.conf
+    permissions: '0644'
+    owner: root:root
+    content: |
+      # Enable IPv6 forwarding for FaaS platform
+      net.ipv6.conf.all.forwarding=1
+      net.ipv6.conf.default.forwarding=1
+
+  # Firewall configuration script
+  - path: /usr/local/bin/faas-firewall-setup.sh
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      # Configure firewall for FaaS platform
+
+      # Allow WireGuard port (public)
+      ufw allow 51820/udp comment 'WireGuard VPN'
+
+      # Allow SSH (public)
+      ufw allow 22/tcp comment 'SSH'
+
+      # Note: Function ports (80), DNS (53), and API (8080) are VPN-only
+      # No need to expose them publicly
+
+      # Enable firewall
+      echo "y" | ufw enable
+
+# Run commands during first boot
+runcmd:
+  # Create required directories
+  - mkdir -p /var/lib/faasd/{dns,functions,images,rootfs}
+  - mkdir -p /etc/coredns
+  - mkdir -p /run/faasd
+  - mkdir -p /usr/lib/faasd
+
+  # Set directory permissions
+  - chown -R coredns:coredns /var/lib/faasd/dns
+  - chown -R root:root /var/lib/faasd/functions
+  - chown -R root:root /var/lib/faasd/images
+  - chmod 755 /var/lib/faasd
+
+  # Generate WireGuard keys
+  - |
+    if [ ! -f /etc/wireguard/server_private.key ]; then
+      wg genkey | tee /etc/wireguard/server_private.key | \
+        wg pubkey > /etc/wireguard/server_public.key
+      chmod 600 /etc/wireguard/server_private.key
+      chmod 644 /etc/wireguard/server_public.key
+    fi
+
+  # Create WireGuard config from template
+  - |
+    PRIVATE_KEY=$(cat /etc/wireguard/server_private.key)
+    sed "s|__PRIVATE_KEY__|$PRIVATE_KEY|" \
+      /etc/wireguard/wg-faas.conf.template > /etc/wireguard/wg-faas.conf
+    chmod 600 /etc/wireguard/wg-faas.conf
+    rm /etc/wireguard/wg-faas.conf.template
+
+  # Download and install CoreDNS
+  - |
+    COREDNS_VERSION="1.11.1"
+    cd /tmp
+    wget -q https://github.com/coredns/coredns/releases/download/v${COREDNS_VERSION}/coredns_${COREDNS_VERSION}_linux_amd64.tgz
+    tar -xzf coredns_${COREDNS_VERSION}_linux_amd64.tgz
+    mv coredns /usr/local/bin/
+    chmod +x /usr/local/bin/coredns
+    rm coredns_${COREDNS_VERSION}_linux_amd64.tgz
+
+  # Clone FaaS repository and install
+  - git clone https://github.com/connorcouetil/faas.git /tmp/faas
+
+  # Copy FaaS Python modules
+  - cp /tmp/faas/faasd.py /usr/lib/faasd/
+  - chmod +x /usr/lib/faasd/faasd.py
+
+  # Create faas CLI wrapper
+  - |
+    cat > /usr/local/bin/faas <<'EOF'
+    #!/usr/bin/env python3
+    import sys
+    import subprocess
+
+    # For now, just call the API with curl
+    # In production, this would be a proper CLI client
+    if len(sys.argv) < 2:
+        print("Usage: faas <command> [args]")
+        sys.exit(1)
+
+    if sys.argv[1] == "vpn":
+        # VPN commands would go here
+        print("VPN commands not yet implemented in cloud-init wrapper")
+        print("Use the full client instead")
+        sys.exit(1)
+    else:
+        # API commands
+        endpoint = sys.argv[1]
+        result = subprocess.run(['curl', '-s', f'http://localhost:8080/api/{endpoint}'])
+        sys.exit(result.returncode)
+    EOF
+  - chmod +x /usr/local/bin/faas
+
+  # Apply sysctl settings
+  - sysctl -p /etc/sysctl.d/99-faas-ipv6.conf
+
+  # Reload systemd
+  - systemctl daemon-reload
+
+  # Enable services
+  - systemctl enable wg-faas.service
+  - systemctl enable coredns.service
+  - systemctl enable faasd.service
+
+  # Start services
+  - systemctl start wg-faas.service
+  - systemctl start coredns.service
+  - systemctl start faasd.service
+
+  # Configure firewall
+  - /usr/local/bin/faas-firewall-setup.sh
+
+  # Clean up
+  - rm -rf /tmp/faas
+
+  # Display completion message
+  - |
+    cat > /etc/motd <<'EOF'
+    ================================================================================
+    FaaS Platform is ready!
+
+    Server Public Key:
+    EOF
+  - cat /etc/wireguard/server_public.key >> /etc/motd
+  - |
+    cat >> /etc/motd <<'EOF'
+
+    Service Status:
+    EOF
+  - systemctl is-active wg-faas coredns faasd >> /etc/motd
+  - |
+    cat >> /etc/motd <<'EOF'
+
+    Connect from your client machine:
+      ./faas vpn connect
+
+    View logs:
+      sudo journalctl -u faasd -f
+
+    Check service status:
+      sudo systemctl status wg-faas coredns faasd
+    ================================================================================
+    EOF
+
+# Final message
+final_message: |
+  ================================================================================
+  FaaS Platform cloud-init setup complete!
+
+  Time: $TIMESTAMP
+  Uptime: $UPTIME
+
+  The FaaS platform is now running.
+
+  Next steps:
+    1. SSH to this instance
+    2. Get server public key: sudo cat /etc/wireguard/server_public.key
+    3. Note the instance's public IP address
+    4. On your client machine:
+       ./faas vpn connect
+
+  For more information, see /var/log/cloud-init-output.log
+  ================================================================================

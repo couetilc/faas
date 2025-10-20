@@ -1,0 +1,47 @@
+[Unit]
+Description=WireGuard VPN for FaaS Platform
+After=network-online.target nss-lookup.target
+Wants=network-online.target nss-lookup.target
+PartOf=faasd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Load WireGuard kernel module
+ExecStartPre=/sbin/modprobe wireguard
+
+# Create WireGuard interface
+ExecStartPre=/usr/bin/ip link add wg-faas type wireguard
+
+# Assign IPv6 to WireGuard interface (server address)
+ExecStartPre=/usr/bin/ip -6 addr add fd00:faa5:0:100::1/64 dev wg-faas
+
+# Configure WireGuard with server settings
+ExecStart=/usr/bin/wg setconf wg-faas /etc/wireguard/wg-faas.conf
+
+# Bring interface up
+ExecStartPost=/usr/bin/ip link set wg-faas up
+
+# Add route for entire FaaS network through wg-faas
+ExecStartPost=/usr/bin/ip -6 route add fd00:faa5::/32 dev wg-faas
+
+# Enable IPv6 forwarding
+ExecStartPost=/usr/sbin/sysctl -w net.ipv6.conf.all.forwarding=1
+
+# Tear down on stop
+ExecStop=/usr/bin/ip link del wg-faas
+
+# Security
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/etc/wireguard
+NoNewPrivileges=yes
+
+# Network
+RestartSec=5s
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

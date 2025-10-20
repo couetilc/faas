@@ -1,0 +1,48 @@
+[Unit]
+Description=FaaS Platform Daemon
+Documentation=https://github.com/connorcouetil/faas
+After=network-online.target wg-faas.service coredns.service
+Wants=network-online.target
+Requires=wg-faas.service coredns.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Working directory
+WorkingDirectory=/var/lib/faasd
+
+# Start the daemon
+ExecStart=/usr/bin/python3 /usr/lib/faasd/faasd.py
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitInterval=300s
+StartLimitBurst=5
+
+# Security
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/faasd /run/faasd
+NoNewPrivileges=no
+
+# Resource limits
+LimitNOFILE=1048576
+LimitNPROC=infinity
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=faasd
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+# Cleanup on stop
+ExecStopPost=/bin/bash -c 'for ip in $(/usr/bin/ip -6 addr show dev wg-faas | /usr/bin/grep "inet6 fd00:faa5:1:" | /usr/bin/awk "{print \\$2}"); do /usr/bin/ip -6 addr del "$ip" dev wg-faas 2>/dev/null || true; done'
+
+[Install]
+WantedBy=multi-user.target
