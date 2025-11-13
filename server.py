@@ -92,7 +92,7 @@ def handle_connection(client_sock, client_addr, docker_image):
         client_sock.close()
         try:
             control_sock.close()
-        except:
+        except OSError:
             pass
     finally:
         # Clean up Unix socket file

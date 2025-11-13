@@ -415,7 +415,7 @@ def handle_request(client_sock, client_addr, rootfs_path, cmd):
         try:
             subprocess.run(['runc', 'delete', '--force', container_id],
                           stderr=subprocess.DEVNULL)
-        except:
+        except Exception:
             pass
 
         if bundle_dir and os.path.exists(bundle_dir):
