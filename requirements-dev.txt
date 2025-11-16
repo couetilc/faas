@@ -2,8 +2,9 @@
 # Install with: pip install -r requirements-dev.txt
 
 # vmtest - Run tests in a lightweight VM with real kernel
-# Provides @pytest.mark.vmtest decorator and VM fixtures
-vmtest>=0.3.0
+# Note: vmtest must be installed from GitHub (not on PyPI)
+# Install with: pip install git+https://github.com/danobi/vmtest.git
+# For now, this is optional and tests will skip if not available
 
 # pytest - Testing framework
 pytest>=7.4.0

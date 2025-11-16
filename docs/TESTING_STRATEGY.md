@@ -15,7 +15,8 @@ The FaaS platform uses a **layered testing approach**:
 ```bash
 # Install dependencies
 pip install -r requirements-dev.txt
-sudo apt-get install -y runc qemu-system-x86_64 docker.io
+pip install git+https://github.com/danobi/vmtest.git
+sudo apt-get install -y runc qemu-system-x86 docker.io
 
 # Build test handler
 docker build -f Dockerfile.test-handler -t test-handler .

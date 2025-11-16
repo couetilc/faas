@@ -12,6 +12,16 @@ import shutil
 from pathlib import Path
 import time
 import json
+import sys
+
+# Check if vmtest is available
+try:
+    import vmtest
+    VMTEST_AVAILABLE = True
+except ImportError:
+    VMTEST_AVAILABLE = False
+    print("Warning: vmtest not installed. Integration tests will be skipped.", file=sys.stderr)
+    print("Install with: pip install git+https://github.com/danobi/vmtest.git", file=sys.stderr)
 
 
 def pytest_configure(config):
@@ -24,6 +34,15 @@ def pytest_configure(config):
         "markers",
         "slow: mark test as slow running"
     )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip vmtest tests if vmtest is not available."""
+    if not VMTEST_AVAILABLE:
+        skip_vmtest = pytest.mark.skip(reason="vmtest not installed")
+        for item in items:
+            if "vmtest" in item.keywords:
+                item.add_marker(skip_vmtest)
 
 
 @pytest.fixture(scope="session")

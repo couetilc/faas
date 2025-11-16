@@ -217,18 +217,22 @@ See `.github/workflows/test.yml` for details.
 
 ```bash
 # Ubuntu/Debian
-sudo apt-get install -y runc qemu-system-x86_64 qemu-utils docker.io
+sudo apt-get install -y runc qemu-system-x86 qemu-utils docker.io
 ```
 
 ### Python Dependencies
 
 ```bash
+# Install standard dependencies
 pip install -r requirements-dev.txt
+
+# Install vmtest from GitHub (not on PyPI)
+pip install git+https://github.com/danobi/vmtest.git
 ```
 
 Includes:
 - `pytest` - Test framework
-- `vmtest` - Run tests in VMs
+- `vmtest` - Run tests in VMs (install from GitHub)
 - `pytest-xdist` - Parallel execution
 - `pytest-timeout` - Test timeouts
 - `pytest-cov` - Coverage reporting

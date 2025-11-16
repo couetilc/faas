@@ -61,8 +61,12 @@ Our FaaS platform has unique requirements that make vmtest ideal:
 # Install Python dependencies
 pip install -r requirements-dev.txt
 
+# Install vmtest from GitHub (not available on PyPI)
+pip install git+https://github.com/danobi/vmtest.git
+
 # Install system dependencies (Ubuntu/Debian)
-sudo apt-get install -y runc qemu-system-x86_64 qemu-utils docker.io
+# Note: On Ubuntu 24.04+, the package is qemu-system-x86 (not qemu-system-x86_64)
+sudo apt-get install -y runc qemu-system-x86 qemu-utils docker.io
 
 # Verify installations
 runc --version
