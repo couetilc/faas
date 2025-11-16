@@ -6,15 +6,6 @@ VM_IMAGE=images/faasvm.tar.zst
 
 set -eo pipefail
 
-cleanup() { CLEANUPS+=("$*"); }
-cleanup_runner() {
-    # Run in reverse order (LIFO)
-    for ((i=${#CLEANUPS[@]}-1; i>=0; i--)); do
-        eval "${CLEANUPS[i]}"
-    done
-}
-trap cleanup_runner EXIT
-
 run_step() {
     local msg="$1"; shift
     printf "\t- %s..." "$msg"
@@ -37,8 +28,18 @@ run_step() {
     fi
 }
 
+read -ra vms <<<"$(orbctl list -q)"
+for vm in "${vms[@]}"; do
+    if [ "$VM_NAME" = "$vm" ]; then
+        echo "ERROR: Test suite VM \"$VM_NAME\" is already running."
+        echo "  - run \"orbctl delete $VM_NAME\" and re-run the test suite"
+        exit 1
+    fi
+done
+
 if [ ! -f "$VM_IMAGE" ]; then
-    echo "Creating VM image \"$VM_NAME\" at \"$VM_IMAGE\""
+    echo "No image found at $VM_IMAGE"
+    echo "Creating VM image \"$VM_NAME\" at $VM_IMAGE"
 
     run_step "creating image directory" \
         mkdir -p "$(dirname "$VM_IMAGE")"
@@ -54,20 +55,23 @@ if [ ! -f "$VM_IMAGE" ]; then
             -w "$PWD" \
             ./tests/setup_vm.sh
 
-    run_step "exporting image" \
+    run_step "exporting VM to image" \
         orbctl export "$VM_NAME" "$VM_IMAGE"
 
-    run_step "stopping image" \
+    run_step "stopping VM" \
         orbctl stop "$VM_NAME"
+
+    run_step "deleting VM" \
+        orbctl delete -f "$VM_NAME"
 fi
 
-# # setup
-# orbctl import -n "$VM_NAME" "$VM_IMAGE"
-# # teardown
-# cleanup "orbctl delete -f $VM_NAME" EXIT
-#
-# # test suite
-# orbctl run \
-#     -m "$VM_NAME" \
-#     -w "$PWD" \
-#     uv run pytest
+# setup
+orbctl import -n "$VM_NAME" "$VM_IMAGE"
+# teardown
+trap "orbctl delete -f $VM_NAME" EXIT
+
+# test suite
+orbctl run \
+    -m "$VM_NAME" \
+    -w "$PWD" \
+    uv run pytest
