@@ -41,60 +41,38 @@ jobs:
           .pytest_cache/
           *.log
 
-  # Integration tests - require VM
+  # Integration tests - use existing test.sh script
   integration-tests:
-    name: Integration Tests (vmtest)
+    name: Integration Tests
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          runc \
-          qemu-system-x86 \
-          qemu-utils \
-          docker.io
+        sudo apt-get install -y runc docker.io curl iproute2
 
         # Verify installations
         runc --version
-        qemu-system-x86_64 --version || echo "QEMU installed"
         docker --version
 
-    - name: Install Python dependencies
+    - name: Run integration test script
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
-        # Install vmtest from GitHub (not available on PyPI)
-        pip install git+https://github.com/danobi/vmtest.git
+        chmod +x test.sh
+        sudo ./test.sh
+      timeout-minutes: 10
 
-    - name: Build test handler Docker image
-      run: |
-        docker build -f Dockerfile.test-handler -t test-handler .
-        docker images test-handler
-
-    - name: Run integration tests (vmtest)
-      run: |
-        # vmtest requires root for VM operations
-        sudo -E env PATH=$PATH pytest tests/ -v -m "vmtest and not slow" --tb=short -x
-      timeout-minutes: 20
-
-    - name: Upload test results
+    - name: Upload test logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: integration-test-results
+        name: integration-test-logs
         path: |
-          .pytest_cache/
-          *.log
+          /tmp/faasd.log
+          /tmp/deploy.log
 
   # Stress tests - long running
   stress-tests:

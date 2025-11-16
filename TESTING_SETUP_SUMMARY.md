@@ -72,40 +72,42 @@ tests/
 # 1. Install Python dependencies
 pip install -r requirements-dev.txt
 
-# 2. Install vmtest (not on PyPI, must install from GitHub)
-pip install git+https://github.com/danobi/vmtest.git
-
-# 3. Install system dependencies (Ubuntu/Debian)
+# 2. Install system dependencies (Ubuntu/Debian)
 sudo apt-get update
-sudo apt-get install -y runc qemu-system-x86 qemu-utils docker.io
+sudo apt-get install -y runc docker.io curl
 
-# 4. Verify installations
-runc --version
-qemu-system-x86_64 --version
-pytest --version  # Should show pytest 7.4.0+
-
-# 5. Build test handler Docker image
+# 3. Build test handler Docker image
 docker build -f Dockerfile.test-handler -t test-handler .
 ```
 
 ### Running Tests
 
+#### Quick Start (Recommended)
+
 ```bash
-# Run unit tests (fast, no sudo needed)
+# Run unit tests (fast, no sudo)
 pytest tests/ -m "not vmtest" -v
 
 # Run integration tests (requires sudo)
+sudo ./test.sh
+```
+
+#### Advanced Testing (Optional - requires vmtest binary)
+
+If you've installed the vmtest binary (see docs/CI_TESTING_APPROACH.md):
+
+```bash
+# Run unit tests
+pytest tests/ -m "not vmtest" -v
+
+# Run vmtest integration tests
 sudo pytest tests/ -m "vmtest and not slow" -v
 
-# Run all tests including stress tests
+# Run all tests
 sudo pytest tests/ -v
-
-# Run specific test file
-sudo pytest tests/test_container_lifecycle.py -v
-
-# Run single test
-sudo pytest tests/test_container_lifecycle.py::TestContainerLifecycle::test_deploy_and_invoke_handler -v
 ```
+
+**Note:** vmtest is a Rust binary (not a Python package) and is **optional** for local development. The existing `test.sh` script provides reliable integration testing without vmtest.
 
 ## Test Examples
 
