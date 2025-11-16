@@ -2,6 +2,26 @@
 
 This guide walks through testing the complete FaaS implementation.
 
+## Testing using `orb`
+
+1. Install `orb`
+```sh
+brew install orbstack
+```
+
+2. Create Ubuntu VM Image
+```sh
+orbctl create -a arm64 ubuntu faasvm
+mkdir -p images/
+orbctl export faasvm images/faasvm.tar.zst
+orbctl delete faasvm
+```
+
+3. Run the test suite
+```sh
+./test_suite_orb.sh
+```
+
 ## Prerequisites
 
 1. **Root access** - faasd must run as root
