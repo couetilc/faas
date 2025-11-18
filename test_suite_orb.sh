@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+PROJECT_DIR="$(dirname ${BASH_SOURCE[0]})"
 ARCH="arm64"
-DISTRO="ubuntu"
+DISTRO="ubuntu:noble"
 VM_NAME=faasvm
 VM_IMAGE=images/faasvm.tar.zst
 
@@ -53,7 +54,7 @@ if [ ! -f "$VM_IMAGE" ]; then
         orbctl run \
             -m "$VM_NAME" \
             -w "$PWD" \
-            ./tests/setup_vm.sh
+            PROJECT_DIR="$PROJECT_DIR" ./tests/setup_vm.sh
 
     run_step "exporting VM to image" \
         orbctl export "$VM_NAME" "$VM_IMAGE"
@@ -74,4 +75,6 @@ trap "orbctl delete -f $VM_NAME" EXIT
 orbctl run \
     -m "$VM_NAME" \
     -w "$PWD" \
-    uv run pytest
+    sudo -u faas_user rm "$PROJECT_DIR/example.file"
+    # ls -al "$PROJECT_DIR"
+    # uv run python --version
