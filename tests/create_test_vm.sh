@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# - creates images/ directory
-# - checks for required commands
-# - downloads ubuntu release
 
 set -euo pipefail
 
@@ -11,7 +8,7 @@ VM_DIR="$TESTS_DIR/vm"
 source "$TESTS_DIR/common.sh"
 
 # check for our required commands
-require_cmd curl 
+require_cmd curl ssh-keygen
 
 # check our test image directory exists
 if [ ! -d "$VM_DIR" ]; then
@@ -21,7 +18,7 @@ else
     echo "✓ Images directory exists"
 fi
 
-# download our ubuntu release
+# check ubuntu release image exists
 UBUNTU_RELEASE="noble"
 ARCH="arm64"
 IMAGE_NAME="$UBUNTU_RELEASE-server-cloudimg-$ARCH.img"
@@ -31,4 +28,12 @@ if [ ! -f "$VM_DIR/$IMAGE_NAME" ]; then
             "https://cloud-images.ubuntu.com/$UBUNTU_RELEASE/current/$IMAGE_NAME"
 else
     echo "✓ Ubuntu release exists"
+fi
+
+# check ssh key pair exists
+if [ ! -f "$VM_DIR/ssh-key" ]; then
+    run_step "Generating SSH key pair" \
+        ssh-keygen -N "" -f "$VM_DIR/ssh-key"
+else
+    echo "✓ SSH key pair exists"
 fi
