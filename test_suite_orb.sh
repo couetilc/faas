@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# Boots the faas VM via QEMU, syncs the repo over SSH, and runs the pytest
-# suite inside the guest. Environment variables:
-#   QEMU_CPUS / QEMU_RAM    - tweak VM size (default 4 cores / 4GB)
-#   QEMU_ACCEL              - override hvf if needed
-#   FAASVM_SSH_PORT         - pick a fixed local SSH port
 set -euo pipefail
+
+# Summary:
+# - checks required software
+# - locates firmware
+# - calls `qemu-img create`, producing an overlay image from the base (assumes the base is there)
+# - starts vm from overlay image using `qemu-system-aarch64`
+# - waits for ssh to be ready
+# - rsyncs the repo over (honors gitignore which is nice detail)
+# - executes command to run test suite over ssh 
+# - checks exit code of test suite (need to find someway to capture stdout/stderr of test suite and of server daemon)
+# - sends "sudo poweroff" over ssh
+# - waits on qemu pid
 
 info() {
     printf "[faasvm] %s\n" "$*"
@@ -15,6 +22,7 @@ die() {
     exit 1
 }
 
+# I like this
 require_cmd() {
     local missing=0
     for cmd in "$@"; do
@@ -26,6 +34,7 @@ require_cmd() {
     [ "$missing" -eq 0 ] || die "Install the missing commands and re-run."
 }
 
+# unnecessary? it's for helping locate the firmware
 default_qemu_share_dir() {
     local bin
     bin=$(command -v qemu-system-aarch64)
@@ -34,6 +43,7 @@ default_qemu_share_dir() {
     printf "%s/share/qemu" "$prefix"
 }
 
+# qemu should be able to take care of this itself
 locate_firmware() {
     local firmware_dir="${QEMU_FIRMWARE_DIR:-$(default_qemu_share_dir)}"
     UEFI_CODE="${QEMU_EFI_CODE:-$firmware_dir/edk2-aarch64-code.fd}"
@@ -42,6 +52,7 @@ locate_firmware() {
     [ -f "$UEFI_VARS_TEMPLATE" ] || die "UEFI variable store not found at $UEFI_VARS_TEMPLATE (set QEMU_EFI_VARS)."
 }
 
+# vm should be using 22, ofc, ah but this could be on host, hmm, I wonder if I could just make a new interface.
 pick_ssh_port() {
     if [ -n "${FAASVM_SSH_PORT:-}" ]; then
         printf "%s" "$FAASVM_SSH_PORT"
@@ -65,6 +76,7 @@ pick_ssh_port() {
 }
 
 # Poll until sshd is reachable inside the guest (cloud-init can take a while).
+# not sure I want cloud init, too heavyweight for what I'm doing.
 wait_for_ssh() {
     local timeout="${1:-180}"
     local start

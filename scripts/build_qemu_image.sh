@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
-# Builds the base qcow2 disk and SSH key used by test_suite_orb.sh.
-# This runs once (or whenever you delete images/faasvm-base.qcow2).
 set -euo pipefail
+
+# summary:
+# - creates images/ directory
+# - checks for required commands
+# - downloads latest ubuntu release
+# - generates SSH key
+# - writes cloud-init data
+# - creates cloud-init seed image?
+# - calls `qemu-img resize` to make work image 20G?
+# - trys to find firmware again
+# - run `qemu-system-aarch64` with seed image and work image
+# - then we have the final image.
+#
+# Hmm, this seems to be a mess, but let's clean it up.
+# This is the first step of this process, creating a base image I can build overlays off of.
+# The challenge will be cloud-init + QEMU => final image.
+# Let's start just with downloading the Ubuntu release.
 
 die() {
     >&2 echo "[build-qemu] $*"
