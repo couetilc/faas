@@ -2,13 +2,12 @@
 
 set -euo pipefail
 
-TESTS_DIR="$(dirname "${BASH_SOURCE[0]}")"
-VM_DIR="$TESTS_DIR/vm"
+VM_DIR="$(dirname "${BASH_SOURCE[0]}")"
 
-source "$TESTS_DIR/common.sh"
+source "$VM_DIR/common.sh"
 
 # check for our required commands
-require_cmd curl ssh-keygen
+require_cmd curl ssh-keygen docker
 
 # check our test image directory exists
 if [ ! -d "$VM_DIR" ]; then
@@ -38,45 +37,17 @@ else
     echo "✓ SSH key pair exists"
 fi
 
-# cloud init stuff now
-cat > "$VM_DIR/cloud-init" <<EOF
-hostname: faasvm
-package_update: true
-package_upgrade: false
-users:
-  - default
-  - name: faas_user
-    groups: sudo
-    shell: /bin/bash
-    sudo: ['ALL=(ALL) NOPASSWD: /sbin/shutdown, /sbin/poweroff, /sbin/reboot']
-    ssh_authorized_keys:
-      - $(cat "$VM_DIR/ssh-key.pub")
-write_files:
-  - path: /usr/local/bin/setup.sh
-    permissions: '0755'
-    content: |
-      #!/bin/bash
-      set -euo pipefail
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update
-      apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        git \
-        openssh-client \
-        python3 \
-        python3-pip \
-        python3-venv \
-        rsync
-      curl -LsSf https://astral.sh/uv/install.sh | sh
-      install -m 0755 -o root -g root /root/.local/bin/uv /usr/local/bin/uv
-runcmd:
-  - /usr/local/bin/setup.sh
-  - rm -f /usr/local/bin/setup.sh
-power_state:
-  mode: poweroff
-  delay: now
-EOF
+run_step "Generating base iso" \
+    docker run \
+        -v $VM_DIR/base.iso:/base.iso \
+        -v $VM_DIR/user-data:/user-data \
+        -v $VM_DIR/user-data:/meta-data \
+        ubuntu:latest sh -c "
+          cp /user-data /user-data-copy
+          echo '      - $(cat $VM_DIR/ssh-key.pub)' >> /user-data-copy
+          apt-get update && apt-get install -y -qq cloud-image-utils
+          cloud-localds /base.iso /user-data-copy /meta-data
+        "
 
 # Claude security notes
 # 1. Shutdown capability is fine - Use sudoers approach for simplicity
@@ -85,3 +56,5 @@ EOF
 # 4. Set VM resource limits (memory, CPU in QEMU args)
 # 5. Make VM ephemeral - recreate for each test run if paranoid
 # 6. This is a test VM - it's meant to be broken into!
+
+echo "Done!"

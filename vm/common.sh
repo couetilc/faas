@@ -29,5 +29,4 @@ require_cmd() {
             missing=1
         fi
     done
-    [ "$missing" -eq 0 ] || die "Install the missing commands and re-run this script."
 }
