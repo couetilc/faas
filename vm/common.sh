@@ -15,7 +15,8 @@ run_step() {
         cat "$outfile"
         echo "=== STDERR ==="
         cat "$errfile"
-        echo "=== END ===\n"
+        echo "=== END ==="
+        echo
         rm -f "$outfile" "$errfile"
         return 1
     fi

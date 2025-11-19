@@ -1,2 +1,2 @@
-instance-id: faasvm
+instance-id: faasvm-test-runner
 local-hostname: faasvm

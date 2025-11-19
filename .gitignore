@@ -1,4 +1,1 @@
-vm/*.img
-vm/*.iso
-vm/ssh-key*
 __pycache__

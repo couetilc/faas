@@ -1,3 +1,4 @@
+#cloud-config
 hostname: faasvm
 package_update: true
 package_upgrade: false
