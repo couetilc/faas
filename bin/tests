@@ -2,16 +2,25 @@
 
 set -euo pipefail
 
-# - start vm
-# - rsync files
-# - trigger pytest
-# - collect debugging information
+# TODO: create overlay VM from base image test_runner, so each run is isolated
+# and without side-effects
+
+ssh="ssh \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o ConnectTimeout=1 \
+    -o ConnectionAttempts=1 \
+    -o LogLevel=quiet \
+    -p 2222 \
+    -i $ROOT/vm/ssh-key"
 
 # limit to half of cores on host
 cores="$(($(sysctl -n hw.ncpu) / 2))"
 # limit to fourth of memory on host
 mem="$(($(sysctl -n hw.memsize) / (1024 * 1024 * 4)))"
 
+echo "Booting vm"
+vm_pidfile=$(mktemp)
 qemu-system-aarch64 \
     -bios "$(brew --prefix qemu)/share/qemu/edk2-aarch64-code.fd" \
     -accel hvf \
@@ -19,9 +28,48 @@ qemu-system-aarch64 \
     -machine virt,highmem=on \
     -smp "$cores" \
     -m "$mem" \
-    -serial stdio \
+    -serial mon:stdio \
     -display none \
     -drive if=virtio,format=qcow2,file=$ROOT/vm/test_runner.img \
-    -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22
-    # -nic user,hostfwd=tcp::2222-:22
-    # -serial mon:stdio \
+    -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 \
+    &>/dev/null \
+    &
+qemu_pid=$!
+
+# TODO: on failure, remove the test run vm too. We'll make better debugging
+# utilities later
+trap "kill $qemu_pid" ERR
+
+printf "  - checking for port readiness..."
+until nc -z localhost 2222 &>/dev/null; do
+    sleep 0.1
+    printf "."
+done
+printf "Done\n"
+
+printf "  - checking for ssh availability..."
+until $ssh faas_user@localhost true &>/dev/null
+do
+    printf "."
+done
+printf "Done\n"
+
+printf "  - copying test files onto vm..."
+rsync \
+    -e "$ssh" \
+    -qa \
+    --include "pyproject.toml" \
+    --include "pytest.toml" \
+    --include "uv.lock" \
+    --include "src/***" \
+    --include "tests/***" \
+    --exclude "*" \
+    "$ROOT/" faas_user@localhost:~
+printf "Done\n"
+
+echo "Executing test suite"
+$ssh faas_user@localhost 'ls -al && uv run pytest && sudo shutdown -h now'
+
+wait
+
+# TODO: cleanup: remove the vm image for this test suite run.

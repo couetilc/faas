@@ -1,0 +1,10 @@
+#!/usr/bin/env bash 
+
+# - start VM
+# - poll until ssh ready, or is there an rsync version of this?
+# 	- someway to get an event from inside VM? Down serial port?
+# 	- systemd service that runs once after sshd spins up and sends request down serial?
+# - rsync files in sync mode over ssh
+# - run pytest in watch mode
+# - wait on rsync pid, qemu vm pid
+# 	- does this handle signals correctly?
