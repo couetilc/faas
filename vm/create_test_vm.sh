@@ -74,7 +74,7 @@ if [ ! -f seed.iso ]; then
             ubuntu:latest sh -c "
               set -e
               cp /user-data /user-data-copy
-              echo '    - $(cat ssh-key.pub)' >> /user-data-copy
+              echo '      - $(cat ssh-key.pub)' >> /user-data-copy
               apt-get update && apt-get install -y -qq cloud-image-utils
               cloud-localds /seed.iso /user-data-copy /meta-data
             "
