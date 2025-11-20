@@ -5,12 +5,15 @@ run_step() {
     local errfile
     outfile=$(mktemp)
     errfile=$(mktemp)
+    timing=$(mktemp)
 
-    if "$@" 1>"$outfile" 2>"$errfile"; then
-        printf "Done\n"
+    if {
+        time "$@" 1>"$outfile" 2>"$errfile";
+    } 2>"$timing"; then
+        printf "Done (%s)\n" "$(grep 'real' "$timing" | awk '{print $2}')"
         rm -f "$outfile" "$errfile"
     else
-        printf "ERROR\n"
+        printf "ERROR (%s)\n" "$(grep 'real' "$timing" | awk '{print $2}')"
         echo "=== STDOUT ==="
         cat "$outfile"
         echo "=== STDERR ==="

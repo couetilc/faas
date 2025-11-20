@@ -1,0 +1,3 @@
+[pytest]
+addopts = ["--import-mode=importlib"] # see https://docs.pytest.org/en/stable/explanation/goodpractices.html#which-import-mode
+strict = true

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# - start vm
+# - rsync files
+# - trigger pytest
+# - collect debugging information
+
+# limit to half of cores on host
+cores="$(($(sysctl -n hw.ncpu) / 2))"
+# limit to fourth of memory on host
+mem="$(($(sysctl -n hw.memsize) / (1024 * 1024 * 4)))"
+
+qemu-system-aarch64 \
+    -bios "$(brew --prefix qemu)/share/qemu/edk2-aarch64-code.fd" \
+    -accel hvf \
+    -cpu host \
+    -machine virt,highmem=on \
+    -smp "$cores" \
+    -m "$mem" \
+    -serial stdio \
+    -display none \
+    -drive if=virtio,format=qcow2,file=$ROOT/vm/test_runner.img \
+    -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22
+    # -nic user,hostfwd=tcp::2222-:22
+    # -serial mon:stdio \
