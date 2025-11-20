@@ -2,14 +2,45 @@
 
 set -euo pipefail
 
+source $ROOT/vm/common.sh
+
 # TODO: I need to prepare the test_runner so I don't have to do "uv run" I can just "pytest", I want dependencies installed ahead of time. This will be different for dev runner.
+
+require_cmd qemu-img qemu-system-aarch64 ssh ssh-keygen rsync nc
+
+usage="Usage: tests [--interactive]
+
+Run the test suite.
+
+Options:
+    -i,--interactive      Re-run the test suite on changes, attaches TTY to VM
+"
+
+INTERACTIVE_FLAG=""
+
+# check command flags
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            echo "$usage"
+            exit
+            ;;
+        -i|--interactive)
+            INTERACTIVE_FLAG="0"
+            ;;
+        *)
+            >&2 echo "Error: Unknown argument"
+            echo "$usage"
+            exit 1
+    esac
+done
 
 # tests run in overlay img so startup environment is controlled and runtime
 # effects are isolated 
 BASE_IMG="$ROOT/vm/test_runner.img"
-TEST_RUN_IMG="$ROOT/vm/test_run_1.img"
-qemu-img create -f qcow2 -B qcow2 -b "$BASE_IMG" "$TEST_RUN_IMG"
-trap "rm -f $TEST_RUN_IMG" EXIT
+TEST_IMG="$ROOT/vm/test_run_1.img"
+qemu-img create -f qcow2 -B qcow2 -b "$BASE_IMG" "$TEST_IMG" &>/dev/null
+trap "rm -f $TEST_IMG" EXIT
 
 ssh="ssh \
     -o StrictHostKeyChecking=no \
@@ -36,7 +67,7 @@ qemu-system-aarch64 \
     -m "$mem" \
     -serial mon:stdio \
     -display none \
-    -drive "if=virtio,format=qcow2,file=$TEST_RUN_IMG" \
+    -drive "if=virtio,format=qcow2,file=$TEST_IMG" \
     -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 \
     &>/dev/null \
     &
@@ -60,22 +91,40 @@ do
 done
 printf "Done\n"
 
-printf "  - copying test files onto vm..."
-rsync \
-    -e "$ssh" \
-    -qa \
-    --include "pyproject.toml" \
-    --include "pytest.toml" \
-    --include "uv.lock" \
-    --include "src/***" \
-    --include "tests/***" \
-    --exclude "*" \
-    "$ROOT/" faas_user@localhost:~
-printf "Done\n"
+if [ -z $INTERACTIVE_FLAG ]; then
+    printf "  - copying test files onto vm..."
+    rsync \
+        -e "$ssh" \
+        -qa \
+        --include "pyproject.toml" \
+        --include "pytest.toml" \
+        --include "uv.lock" \
+        --include "src/***" \
+        --include "tests/***" \
+        --exclude "*" \
+        "$ROOT/" faas_user@localhost:~
+    printf "Done\n"
 
-echo "Executing test suite"
-$ssh faas_user@localhost 'ls -al && uv run pytest && sudo shutdown -h now'
+    echo "Executing test suite"
+    $ssh faas_user@localhost 'ls -al && uv run pytest && sudo shutdown -h now'
+else
+    printf "  - copying test files onto vm..."
+    rsync \
+        -e "$ssh" \
+        -qa \
+        --include "pyproject.toml" \
+        --include "pytest.toml" \
+        --include "uv.lock" \
+        --include "src/***" \
+        --include "tests/***" \
+        --exclude "*" \
+        "$ROOT/" faas_user@localhost:~
+    printf "Done\n"
+
+    echo "Starting interactive session..."
+    $ssh -t faas_user@localhost 'bash -l '
+    echo "Session ended, shutting down vm..."
+    $ssh faas_user@localhost 'sudo shutdown -h now'
+fi
 
 wait
-
-# TODO: cleanup: remove the vm image for this test suite run.
