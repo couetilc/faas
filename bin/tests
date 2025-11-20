@@ -2,8 +2,14 @@
 
 set -euo pipefail
 
-# TODO: create overlay VM from base image test_runner, so each run is isolated
-# and without side-effects
+# TODO: I need to prepare the test_runner so I don't have to do "uv run" I can just "pytest", I want dependencies installed ahead of time. This will be different for dev runner.
+
+# tests run in overlay img so startup environment is controlled and runtime
+# effects are isolated 
+BASE_IMG="$ROOT/vm/test_runner.img"
+TEST_RUN_IMG="$ROOT/vm/test_run_1.img"
+qemu-img create -f qcow2 -B qcow2 -b "$BASE_IMG" "$TEST_RUN_IMG"
+trap "rm -f $TEST_RUN_IMG" EXIT
 
 ssh="ssh \
     -o StrictHostKeyChecking=no \
@@ -30,7 +36,7 @@ qemu-system-aarch64 \
     -m "$mem" \
     -serial mon:stdio \
     -display none \
-    -drive if=virtio,format=qcow2,file=$ROOT/vm/test_runner.img \
+    -drive "if=virtio,format=qcow2,file=$TEST_RUN_IMG" \
     -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 \
     &>/dev/null \
     &
