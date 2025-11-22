@@ -106,7 +106,7 @@ if [ -z $INTERACTIVE_FLAG ]; then
     printf "Done\n"
 
     echo "Executing test suite"
-    $ssh faas_user@localhost 'ls -al && uv run pytest && sudo shutdown -h now'
+    $ssh faas_user@localhost 'ls -al && uv run pytest && sudo poweroff'
 else
     printf "  - copying test files onto vm..."
     rsync \

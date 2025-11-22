@@ -15,6 +15,7 @@ Builds a virtual machine image for running this project's test suite.
 Options:
   --clean       remove all test vm build files
   --retry       remove all test vm build files then re-run the build
+  --init        Re-initialize the test runner image using cloud-init
   -h, --help    show usage text   
 "
 
@@ -34,6 +35,9 @@ for arg in "$@"; do
             run_step "Removing all files then retrying" \
                 rm -f ubuntu.img ssh-key* seed.iso test_runner.img
             break
+            ;;
+        --init)
+            rm -f ssh-key* seed.iso test_runner.img
             ;;
     esac
 done

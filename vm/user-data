@@ -20,9 +20,6 @@ power_state:
   mode: poweroff
   delay: now
 users:
-  - default
   - name: faas_user
-    groups: sudo
-    shell: /bin/bash
-    sudo: ['ALL=(ALL) NOPASSWD: /sbin/shutdown, /sbin/poweroff, /sbin/reboot']
+    sudo: ['ALL=(ALL) NOPASSWD: /sbin/poweroff']
     ssh_authorized_keys:
