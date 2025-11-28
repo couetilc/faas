@@ -99,18 +99,19 @@ if [ ! -f test_runner.img ]; then
     # initialize the test_runner using cloud-init
     run_step "Booting test_runner and running cloud-init" \
         qemu-system-aarch64 \
-            -bios "$(brew --prefix qemu)/share/qemu/edk2-aarch64-code.fd" \
             -accel hvf \
             -cpu host \
-            -machine virt,highmem=on \
-            -smp "$cores" \
-            -m "$mem" \
-            -display none \
-            -serial mon:stdio \
-            -drive if=virtio,format=raw,file=seed.iso \
-            -drive if=virtio,format=qcow2,file=test_runner.img \
+            -machine virt \
+            -smp 4 \
+            -m 4G \
+            -drive file=seed.iso,if=none,format=raw,readonly=on,id=cidata \
+            -device virtio-blk-pci,drive=cidata \
+            -drive file=test_runner.img,if=none,format=qcow2,id=hd0 \
+            -device virtio-blk-pci,drive=hd0 \
             -device virtio-net-pci,netdev=net0 \
-            -netdev user,id=net0
+            -netdev user,id=net0 \
+            -nographic \
+            -bios "$(brew --prefix qemu)/share/qemu/edk2-aarch64-code.fd"
     # successful initialization, no need for cleanup
     trap - ERR
 else

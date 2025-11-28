@@ -8,15 +8,16 @@ source $ROOT/vm/common.sh
 
 require_cmd qemu-img qemu-system-aarch64 ssh ssh-keygen rsync nc
 
-usage="Usage: tests [--interactive]
+usage="Usage: tests [-i]
 
 Run the test suite.
 
 Options:
-    -i,--interactive      Re-run the test suite on changes, attaches TTY to VM
+    -i      Run a shell in the vm.
+    -h      Show help
 "
 
-INTERACTIVE_FLAG=""
+SHELL_FLAG=""
 
 # check command flags
 for arg in "$@"; do
@@ -25,8 +26,8 @@ for arg in "$@"; do
             echo "$usage"
             exit
             ;;
-        -i|--interactive)
-            INTERACTIVE_FLAG="0"
+        -i)
+            SHELL_FLAG="0"
             ;;
         *)
             >&2 echo "Error: Unknown argument"
@@ -77,22 +78,25 @@ qemu_pid=$!
 # utilities later
 trap "kill $qemu_pid" ERR
 
-printf "  - checking for port readiness..."
-until nc -z localhost 2222 &>/dev/null; do
-    sleep 0.1
-    printf "."
-done
-printf "Done\n"
+check_port() {
+    until nc -z localhost 2222 &>/dev/null; do
+        sleep 0.1
+        printf "."
+    done
+}
 
-printf "  - checking for ssh availability..."
-until $ssh faas_user@localhost true &>/dev/null
-do
-    printf "."
-done
-printf "Done\n"
+run_step "checking for port readiness" check_port
 
-if [ -z $INTERACTIVE_FLAG ]; then
-    printf "  - copying test files onto vm..."
+check_ssh() {
+    until $ssh faas_user@localhost true &>/dev/null
+    do
+        printf "."
+    done
+}
+
+run_step "checking for ssh availability..." check_ssh
+
+run_once() {
     rsync \
         -e "$ssh" \
         -qa \
@@ -106,8 +110,10 @@ if [ -z $INTERACTIVE_FLAG ]; then
     printf "Done\n"
 
     echo "Executing test suite"
-    $ssh faas_user@localhost 'ls -al && uv run pytest && sudo poweroff'
-else
+    $ssh faas_user@localhost 'uv run pytest && sudo poweroff'
+}
+
+run_shell() {
     printf "  - copying test files onto vm..."
     rsync \
         -e "$ssh" \
@@ -125,6 +131,12 @@ else
     $ssh -t faas_user@localhost 'bash -l '
     echo "Session ended, shutting down vm..."
     $ssh faas_user@localhost 'sudo shutdown -h now'
+}
+
+if [ -z $SHELL_FLAG ]; then
+    run_step "Running pytest" run_once
+else
+    run_shell "Starting shell" run_shell
 fi
 
 wait
