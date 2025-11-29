@@ -21,7 +21,20 @@ from watchfiles import watch, Change
 
 # TODO: I need to prepare the test_runner so I don't have to do "uv run" I can
 # just "pytest", I want dependencies installed ahead of time. This will be
-# different for dev runner. 
+# different for dev runner.
+
+# Global shutdown flag for graceful termination
+shutdown_requested = threading.Event()
+shutdown_message_shown = False
+
+def signal_handler(signum, frame):
+    """Handle SIGINT (Ctrl+C) gracefully."""
+    global shutdown_message_shown
+    if not shutdown_requested.is_set():
+        shutdown_requested.set()
+    elif not shutdown_message_shown:
+        print("\nShutting down...", flush=True)
+        shutdown_message_shown = True
 
 ROOT = Path(__file__).parent.parent.absolute()
 
@@ -65,7 +78,6 @@ def get_system_resources():
     # limit to fourth of memory on host (convert bytes to MB)
     mem = max(max_mem // (1024 * 1024 * 4), min_mem)
 
-
     return core, mem
 
 
@@ -97,11 +109,14 @@ def check_ssh(ssh_cmd):
 
 def rsync_files(ssh_base):
     """Rsync test files to the VM."""
-    subprocess.run(
+    if shutdown_requested.is_set():
+        raise KeyboardInterrupt("Shutdown requested")
+
+    proc = subprocess.Popen(
         [
             "rsync",
             "-e", " ".join(ssh_base),
-            "-qa",
+            "-va",  # Changed from -qa to -va for verbose output
             "--include", "pyproject.toml",
             "--include", "pytest.toml",
             "--include", "uv.lock",
@@ -111,9 +126,38 @@ def rsync_files(ssh_base):
             f"{ROOT}/",
             "faas_user@localhost:~"
         ],
-        check=True
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1  # Line buffered
     )
-    print("Done")
+
+    # Stream output while checking for shutdown
+    try:
+        for line in proc.stdout:
+            if shutdown_requested.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                raise KeyboardInterrupt("Shutdown during rsync")
+            print(line, end='')
+
+        proc.wait()
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, proc.args)
+
+        print("Done")
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
 
 def run_once(ssh_cmd):
@@ -141,15 +185,54 @@ def run_shell(ssh_cmd):
 
 def run_tests_continuous(ssh_cmd):
     """Run tests without shutting down the VM."""
+    if shutdown_requested.is_set():
+        raise KeyboardInterrupt("Shutdown requested")
+
+    proc = subprocess.Popen(
+        ssh_cmd + ["faas_user@localhost", "uv run pytest"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1  # Line buffered
+    )
+
+    # Stream output while checking for shutdown
     try:
-        subprocess.run(
-            ssh_cmd + ["faas_user@localhost", "uv run pytest"],
-            check=False  # Don't exit on test failures
-        )
-    except KeyboardInterrupt:
-        # Allow Ctrl+C to interrupt pytest
-        print("\n\nTest run interrupted")
-        raise
+        for line in proc.stdout:
+            if shutdown_requested.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                raise KeyboardInterrupt("Shutdown during tests")
+            print(line, end='')
+
+        proc.wait()
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+
+def loop_watchfiles(stop_flag, *args, **kwargs):
+    for changes in watch(*args, stop_event = stop_flag, **kwargs):
+        if stop_flag.is_set():
+            break
+        for change_type, path in changes:
+            change_name = change_type.name.lower()
+            print(f"  {change_name}: {path}")
+        print("\n  - copying test files onto vm...", end="", flush=True)
+        rsync_files(ssh_base)
+        print("\n")
+        run_tests_continuous(ssh_base)
+        if not stop_flag.is_set():
+            print("\nWatching for changes...")
 
 
 def main():
@@ -168,6 +251,9 @@ def main():
         help="Watch for file changes and re-run tests"
     )
     args = parser.parse_args()
+
+    # Register signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
 
     require_commands(REQUIRED_COMMANDS)
 
@@ -262,32 +348,23 @@ def main():
                 rsync_files(ssh_base)
                 run_shell(ssh_base)
             elif args.watch:
-                try:
-                    # Initial run
-                    print("  - copying test files onto vm...", end="", flush=True)
-                    rsync_files(ssh_base)
-                    print("\n")
-                    run_tests_continuous(ssh_base)
+                # Initial run
+                print("  - copying test files onto vm...", end="", flush=True)
+                rsync_files(ssh_base)
+                print("\n")
+                run_tests_continuous(ssh_base)
 
-                    # Watch for changes
-                    print("\n\nWatching for changes in src/ and tests/...")
-                    print("Press Ctrl+C to stop\n")
+                # Watch for changes
+                print("\n\nWatching for changes in src/ and tests/...")
+                print("Press Ctrl+C to stop\n")
 
-                    watch_paths = [ROOT / "src", ROOT / "tests"]
-                    for changes in watch(*watch_paths):
-                        print(f"\nDetected changes:")
-                        for change_type, path in changes:
-                            change_name = change_type.name.lower()
-                            print(f"  {change_name}: {path}")
+                watch_paths = [ROOT / "src", ROOT / "tests"]
 
-                        print("\n  - copying test files onto vm...", end="", flush=True)
-                        rsync_files(ssh_base)
-                        print("\n")
-                        run_tests_continuous(ssh_base)
-                        print("\nWatching for changes...")
-                except KeyboardInterrupt:
-                    # Re-raise to be caught by outer handler
-                    raise
+                watchfiles_thread = threading.Thread(
+                    target=loop_watchfiles,
+                    args=(shutdown_requested, *watch_paths)
+                )
+                watchfiles_thread.start()
             else:
                 run_step("Running pytest", lambda: (
                     rsync_files(ssh_base),
@@ -297,22 +374,31 @@ def main():
             # Wait for QEMU to finish (not in watch mode)
             if not args.watch:
                 qemu_proc.wait()
-
-        except KeyboardInterrupt:
-            if args.watch:
-                print("\n\nStopping watch mode...")
-                print("Shutting down VM...")
-                subprocess.run(
-                    ssh_base + ["faas_user@localhost", "sudo shutdown -h now"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                qemu_proc.wait(timeout=10)
-            else:
-                qemu_proc.kill()
         except Exception:
             qemu_proc.kill()
-            raise
+        finally:
+            # Always cleanup, check if we need to shutdown VM
+            print("finally cleanup")
+            if qemu_proc.poll() is None:
+                print("proc poll success")
+                if args.watch or args.i:
+                    # Graceful shutdown for watch/interactive modes
+                    print("\n\nShutting down VM...")
+                    subprocess.run(
+                        ssh_base + ["faas_user@localhost", "sudo shutdown -h now"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=5
+                    )
+                    try:
+                        qemu_proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        print("VM didn't shutdown gracefully, forcing...")
+                        qemu_proc.kill()
+                        qemu_proc.wait()
+                else:
+                    # Non-watch mode already triggered poweroff
+                    qemu_proc.wait()
 
     finally:
         cleanup()
