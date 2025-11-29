@@ -3,3 +3,4 @@ __pycache__
 vm/*.img
 vm/*.iso
 vm/ssh-key*
+.claude

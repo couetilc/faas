@@ -2,6 +2,7 @@
 # /// script
 # dependencies = [
 #   "psutil",
+#   "watchfiles",
 # ]
 # ///
 import argparse
@@ -13,7 +14,10 @@ import time
 import socket
 import shutil
 import psutil
+import signal
+import threading
 from pathlib import Path
+from watchfiles import watch, Change
 
 # TODO: I need to prepare the test_runner so I don't have to do "uv run" I can
 # just "pytest", I want dependencies installed ahead of time. This will be
@@ -57,9 +61,10 @@ def get_system_resources():
     core = max(max_core // 2, min_core)
 
     max_mem = psutil.virtual_memory().total
-    min_mem = 512 * 1024 * 1024 # 512MB
-    # limit to fourth of memory on host
-    mem = max(max_mem // 4, min_mem)
+    min_mem = 512  # 512MB
+    # limit to fourth of memory on host (convert bytes to MB)
+    mem = max(max_mem // (1024 * 1024 * 4), min_mem)
+
 
     return core, mem
 
@@ -134,6 +139,19 @@ def run_shell(ssh_cmd):
     )
 
 
+def run_tests_continuous(ssh_cmd):
+    """Run tests without shutting down the VM."""
+    try:
+        subprocess.run(
+            ssh_cmd + ["faas_user@localhost", "uv run pytest"],
+            check=False  # Don't exit on test failures
+        )
+    except KeyboardInterrupt:
+        # Allow Ctrl+C to interrupt pytest
+        print("\n\nTest run interrupted")
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run the test suite.",
@@ -144,6 +162,11 @@ def main():
         action="store_true",
         help="Run a shell in the vm"
     )
+    parser.add_argument(
+        "-w", "--watch",
+        action="store_true",
+        help="Watch for file changes and re-run tests"
+    )
     args = parser.parse_args()
 
     require_commands(REQUIRED_COMMANDS)
@@ -152,6 +175,9 @@ def main():
     # runtime effects are isolated
     base_img = ROOT / "vm" / "test_runner.img"
     test_img = ROOT / "vm" / "test_run_1.img"
+
+    # Remove existing overlay image if it exists
+    test_img.unlink(missing_ok=True)
 
     # Create overlay image
     subprocess.run(
@@ -197,24 +223,32 @@ def main():
 
         bios_path = f"{brew_prefix}/share/qemu/edk2-aarch64-code.fd"
 
+        # Create log file for QEMU output (for debugging)
+        qemu_log = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log')
+        qemu_log_path = qemu_log.name
+        qemu_log.close()
+
         # Start QEMU
-        qemu_proc = subprocess.Popen(
-            [
-                "qemu-system-aarch64",
-                "-bios", bios_path,
-                "-accel", "hvf",
-                "-cpu", "host",
-                "-machine", "virt,highmem=on",
-                "-smp", str(cores),
-                "-m", str(mem),
-                "-serial", "mon:stdio",
-                "-display", "none",
-                "-drive", f"if=virtio,format=qcow2,file={test_img}",
-                "-nic", "user,model=virtio-net-pci,hostfwd=tcp::2222-:22"
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+        with open(qemu_log_path, 'w') as log_file:
+            qemu_proc = subprocess.Popen(
+                [
+                    "qemu-system-aarch64",
+                    "-bios", bios_path,
+                    "-accel", "hvf",
+                    "-cpu", "host",
+                    "-machine", "virt,highmem=on",
+                    "-smp", str(cores),
+                    "-m", str(mem),
+                    "-serial", "mon:stdio",
+                    "-display", "none",
+                    "-drive", f"if=virtio,format=qcow2,file={test_img}",
+                    "-nic", "user,model=virtio-net-pci,hostfwd=tcp::2222-:22"
+                ],
+                stdout=log_file,
+                stderr=subprocess.STDOUT
+            )
+
+        print(f"QEMU log: {qemu_log_path}")
 
         try:
             run_step("checking for port readiness", lambda: check_port())
@@ -227,15 +261,55 @@ def main():
                 print("  - copying test files onto vm...", end="", flush=True)
                 rsync_files(ssh_base)
                 run_shell(ssh_base)
+            elif args.watch:
+                try:
+                    # Initial run
+                    print("  - copying test files onto vm...", end="", flush=True)
+                    rsync_files(ssh_base)
+                    print("\n")
+                    run_tests_continuous(ssh_base)
+
+                    # Watch for changes
+                    print("\n\nWatching for changes in src/ and tests/...")
+                    print("Press Ctrl+C to stop\n")
+
+                    watch_paths = [ROOT / "src", ROOT / "tests"]
+                    for changes in watch(*watch_paths):
+                        print(f"\nDetected changes:")
+                        for change_type, path in changes:
+                            change_name = change_type.name.lower()
+                            print(f"  {change_name}: {path}")
+
+                        print("\n  - copying test files onto vm...", end="", flush=True)
+                        rsync_files(ssh_base)
+                        print("\n")
+                        run_tests_continuous(ssh_base)
+                        print("\nWatching for changes...")
+                except KeyboardInterrupt:
+                    # Re-raise to be caught by outer handler
+                    raise
             else:
                 run_step("Running pytest", lambda: (
                     rsync_files(ssh_base),
                     run_once(ssh_base)
                 ))
 
-            # Wait for QEMU to finish
-            qemu_proc.wait()
+            # Wait for QEMU to finish (not in watch mode)
+            if not args.watch:
+                qemu_proc.wait()
 
+        except KeyboardInterrupt:
+            if args.watch:
+                print("\n\nStopping watch mode...")
+                print("Shutting down VM...")
+                subprocess.run(
+                    ssh_base + ["faas_user@localhost", "sudo shutdown -h now"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                qemu_proc.wait(timeout=10)
+            else:
+                qemu_proc.kill()
         except Exception:
             qemu_proc.kill()
             raise
