@@ -1,5 +1,9 @@
-#!/usr/bin/env python3
-
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = [
+#   "psutil",
+# ]
+# ///
 import argparse
 import os
 import subprocess
@@ -7,11 +11,13 @@ import sys
 import tempfile
 import time
 import socket
+import shutil
+import psutil
 from pathlib import Path
 
 # TODO: I need to prepare the test_runner so I don't have to do "uv run" I can
 # just "pytest", I want dependencies installed ahead of time. This will be
-# different for dev runner.
+# different for dev runner. 
 
 ROOT = Path(__file__).parent.parent.absolute()
 
@@ -24,23 +30,17 @@ REQUIRED_COMMANDS = [
     "nc"
 ]
 
-
 def require_commands(commands):
     """Check that required commands are available."""
     missing = []
     for cmd in commands:
-        if subprocess.run(
-            ["which", cmd],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        ).returncode != 0:
+        if shutil.which(cmd) == None:
             missing.append(cmd)
 
     if missing:
         print(f"Error: Missing required commands: {', '.join(missing)}",
               file=sys.stderr)
         sys.exit(1)
-
 
 def run_step(description, func):
     """Run a step with a description."""
@@ -51,23 +51,17 @@ def run_step(description, func):
 
 def get_system_resources():
     """Get system CPU and memory resources."""
+    max_core = psutil.cpu_count()
+    min_core = 1
     # limit to half of cores on host
-    cores = subprocess.run(
-        ["sysctl", "-n", "hw.ncpu"],
-        capture_output=True,
-        text=True
-    ).stdout.strip()
-    cores = str(int(cores) // 2)
+    core = max(max_core // 2, min_core)
 
+    max_mem = psutil.virtual_memory().total
+    min_mem = 512 * 1024 * 1024 # 512MB
     # limit to fourth of memory on host
-    mem_bytes = subprocess.run(
-        ["sysctl", "-n", "hw.memsize"],
-        capture_output=True,
-        text=True
-    ).stdout.strip()
-    mem_mb = str(int(mem_bytes) // (1024 * 1024 * 4))
+    mem = max(max_mem // 4, min_mem)
 
-    return cores, mem_mb
+    return core, mem
 
 
 def check_port(port=2222):
@@ -173,7 +167,6 @@ def main():
         check=True
     )
 
-    # Setup cleanup
     def cleanup():
         test_img.unlink(missing_ok=True)
 
@@ -212,8 +205,8 @@ def main():
                 "-accel", "hvf",
                 "-cpu", "host",
                 "-machine", "virt,highmem=on",
-                "-smp", cores,
-                "-m", mem,
+                "-smp", str(cores),
+                "-m", str(mem),
                 "-serial", "mon:stdio",
                 "-display", "none",
                 "-drive", f"if=virtio,format=qcow2,file={test_img}",
