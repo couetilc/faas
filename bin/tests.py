@@ -28,6 +28,19 @@ from qemu.qmp import QMPClient
 # just "pytest", I want dependencies installed ahead of time. This will be
 # different for dev runner.
 
+# TODO: some type of TaskThread class
+# - needs to specify dependencies:
+#   - parent dependencies: thread does not execute until condition from parent is satisfied.
+#   - child dependencies: communicate conditions somehow
+# - holds reference to a cancel event used by each TaskThread
+# - maybe Queue for communication between parents/childs? (instead of single Event, could have queue that receives event messages, and also shuts down when parent finishes)
+#   - queue's can send messages: (like "ready")
+#   - queue's can end. See "Queue.shutdown()"
+# - timing tracking (start time, end time, duration)
+# - automatic resource cleanup after completion.
+# - handles interrupts well and across all tasks
+# - task's childrens execute concurrently.
+
 ROOT = Path(__file__).parent.parent.absolute()
 
 # Global shutdown flag for graceful termination
