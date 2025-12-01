@@ -35,8 +35,10 @@ class TaskGroup:
 
 
 class Task:
-    def __init__(self, name):
+    def __init__(self, name = None):
         self.name = name
+        if self.name == None:
+            self.name = self.__class__.__name__
     def target(self):
         raise NotImplementedError(
             'subclasses of class "Task" MUST implement method "target"')

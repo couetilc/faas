@@ -1,3 +1,4 @@
+import pytest
 from tasks.tasks import Task
 
 # Goal
@@ -13,9 +14,28 @@ from tasks.tasks import Task
 # run_once.add_tasks(image_task, qemu_vm, port_ready, ssh_ready)
 # run_once.add_precedence(port_ready, ssh_ready)
 
-def test_subclass():
-    class TestTask(Task):
+def test_task_class_has_name():
+    assert 'foo' == Task('foo').name
+    assert 'foo' == Task(name = 'foo').name
+
+def test_task_class_has_name_default():
+    assert 'Task' == Task().name
+    assert 'Task' == Task().name
+
+def test_task_subclass_has_name_default():
+    class FooTask(Task):
+        pass
+    assert 'FooTask' == FooTask().name
+    assert 'FooTask' == FooTask().name
+
+def test_task_class_method_target_raises_error():
+    with pytest.raises(NotImplementedError) as e:
+        Task().target()
+    assert 'MUST implement method "target"' in str(e)
+
+def test_task_subclass_has_name():
+    class PassTask(Task):
         def target(self):
-            time.sleep(1)
-    task = TestTask(name = 'foo')
-    assert task.name == 'foo'
+            pass
+    assert 'foo' == PassTask('foo').name
+    assert 'foo' == PassTask(name = 'foo').name
