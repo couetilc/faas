@@ -35,12 +35,14 @@ class TaskGroup:
 
 
 class Task:
+    class Exception(Exception):
+        pass
     def __init__(self, name = None):
         self.name = name
         if self.name == None:
             self.name = self.__class__.__name__
     def target(self):
-        raise NotImplementedError(
+        raise Task.Exception(
             'subclasses of class "Task" MUST implement method "target"')
     def start():
         self.thread = threading.Thread(target=self.target,args=(),kwargs={})

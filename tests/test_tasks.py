@@ -18,6 +18,12 @@ def test_task_class_has_name():
     assert 'foo' == Task('foo').name
     assert 'foo' == Task(name = 'foo').name
 
+def test_task_subclass_has_name():
+    class FooTask(Task):
+        pass
+    assert 'foo' == PassTask('foo').name
+    assert 'foo' == PassTask(name = 'foo').name
+
 def test_task_class_has_name_default():
     assert 'Task' == Task().name
     assert 'Task' == Task().name
@@ -29,13 +35,13 @@ def test_task_subclass_has_name_default():
     assert 'FooTask' == FooTask().name
 
 def test_task_class_method_target_raises_error():
-    with pytest.raises(NotImplementedError) as e:
+    with pytest.raises(Task.Exception) as e:
         Task().target()
     assert 'MUST implement method "target"' in str(e)
 
-def test_task_subclass_has_name():
-    class PassTask(Task):
-        def target(self):
-            pass
-    assert 'foo' == PassTask('foo').name
-    assert 'foo' == PassTask(name = 'foo').name
+class PassTask(Task):
+    def target(self):
+        pass
+
+def test_task_subclass_method_target():
+    pass
