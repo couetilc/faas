@@ -1,14 +1,17 @@
 import threading
 
 class TaskGroup:
-    def __init__():
+    def __init__(self, *args):
+        self.tasks = set(args)
         # TODO: manage stdout and stderr for all child tasks.
         # TODO: create some kind of cancel Event, or perhaps a Queue.
         pass
     def __str__(self):
         # TODO: print the TaskGraph as a mermaid diagram representation.
         pass
-    def start():
+    def start(self):
+        for task in self.tasks:
+            task.start()
         # TODO: start each start task
         # TODO: store start time of task graph
         # TODO: store end time of task graph
@@ -16,7 +19,9 @@ class TaskGroup:
     def cancel():
         # TODO: will cancel all tasks in the graph
         pass
-    def wait():
+    def wait(self):
+        for task in self.tasks:
+            task.wait()
         # TODO: will wait for all tasks in the graph to complete
         pass
     def set_stdout():
@@ -33,6 +38,8 @@ class TaskGroup:
         # diminishing precedence
         # TODO: raise error if port_ready and ssh_ready have not been added as tasks.
         pass
+    def add_tasks(self, *args):
+        self.tasks.update(args)
 
 
 class Task:
