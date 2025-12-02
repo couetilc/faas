@@ -1,3 +1,4 @@
+import threading
 
 class TaskGroup:
     def __init__():
@@ -44,8 +45,11 @@ class Task:
     def target(self):
         raise Task.Exception(
             'subclasses of class "Task" MUST implement method "target"')
-    def start():
+    def start(self):
         self.thread = threading.Thread(target=self.target,args=(),kwargs={})
+        self.thread.start()
+    def wait(self, timeout = None):
+        self.thread.join(timeout)
 
 
 class SleepTask(Task):

@@ -1,10 +1,46 @@
 import pytest
+import threading
+import contextlib
 from tasks.tasks import Task
+
+@pytest.fixture(autouse=True)
+def assert_no_threads_remain():
+    yield
+    threads = [
+        thread for thread in threading.enumerate()
+        if thread != threading.main_thread()]
+    assert len(threads) == 0, f"Found {len(threads)} non-main thread{
+        's' if len(threads) != 1 else ''}, expected 0"
+
+@pytest.fixture
+def ignore_task_exception():
+    def hook(args):
+        exc_type, exc_value, exc_traceback, thread = args
+        if exc_type != Task.Exception:
+            return args
+    threading.excepthook = hook
+    yield
+    threading.excepthook = threading.__excepthook__
+
+@contextlib.contextmanager
+def assert_n_threads(n):
+    threads = {}
+    def mark_thread(frame, event, arg):
+        if threading.current_thread() not in threads:
+            threads[threading.current_thread()] = True
+
+    threading.settrace(mark_thread)
+    yield
+    threading.settrace(None)
+
+    assert len(threads) == n, f"Started {len(threads)} non-main thread{
+        's' if len(threads) != 1 else ''}, expected {n}"
+
 
 # Goal
 # run_once = TaskGroup(name = 'run tests once')
 # overlay_image = OverlayImageTask(base_image = '')
-#
+
 # qemu_vm = QemuVmTask(image = TaskGroup.Dependency(overlay_image, 'image'))
 # port_ready = PortReadyTask(port = TaskGroup.Dependency(vm, 'ssh_port'))
 # ssh_ready = PortReadyTask(port = TaskGroup.Dependency(vm, 'ssh_port'))
@@ -39,9 +75,28 @@ def test_task_class_method_target_raises_error():
         Task().target()
     assert 'MUST implement method "target"' in str(e)
 
+@pytest.mark.usefixtures("ignore_task_exception")
+def test_task_class_method_start_and_wait():
+    task = Task()
+    with assert_n_threads(1):
+        task.start()
+        task.wait()
+
+# def test_task_class_method_start_and_wait_cycle():
+#     with assert_n_threads(1):
+#         task = Task()
+#         task.start()
+#         task.wait()
+#     assert_no_threads_remain()
+#     with assert_n_threads(1):
+#         task = Task()
+#         task.start()
+#         task.wait()
+
 class PassTask(Task):
     def target(self):
         pass
 
 def test_task_subclass_method_target():
     pass
+
