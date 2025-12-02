@@ -3,7 +3,6 @@ import threading
 import contextlib
 from tasks.tasks import Task
 
-@pytest.fixture(autouse=True)
 def assert_no_threads_remain():
     yield
     threads = [
@@ -11,6 +10,10 @@ def assert_no_threads_remain():
         if thread != threading.main_thread()]
     assert len(threads) == 0, f"Found {len(threads)} non-main thread{
         's' if len(threads) != 1 else ''}, expected 0"
+
+@pytest.fixture(autouse=True)
+def fixture_assert_no_threads_remain():
+    assert_no_threads_remain()
 
 @pytest.fixture
 def ignore_task_exception():
@@ -82,16 +85,15 @@ def test_task_class_method_start_and_wait():
         task.start()
         task.wait()
 
-# def test_task_class_method_start_and_wait_cycle():
-#     with assert_n_threads(1):
-#         task = Task()
-#         task.start()
-#         task.wait()
-#     assert_no_threads_remain()
-#     with assert_n_threads(1):
-#         task = Task()
-#         task.start()
-#         task.wait()
+def test_task_class_method_start_and_wait_cycle():
+    task = Task()
+    with assert_n_threads(1):
+        task.start()
+        task.wait()
+    assert_no_threads_remain()
+    with assert_n_threads(1):
+        task.start()
+        task.wait()
 
 class PassTask(Task):
     def target(self):
