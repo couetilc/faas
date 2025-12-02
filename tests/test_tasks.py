@@ -60,8 +60,8 @@ def test_task_class_has_name():
 def test_task_subclass_has_name():
     class FooTask(Task):
         pass
-    assert 'foo' == PassTask('foo').name
-    assert 'foo' == PassTask(name = 'foo').name
+    assert 'foo' == FooTask('foo').name
+    assert 'foo' == FooTask(name = 'foo').name
 
 def test_task_class_has_name_default():
     assert 'Task' == Task().name
@@ -95,10 +95,15 @@ def test_task_class_method_start_and_wait_cycle():
         task.start()
         task.wait()
 
-class PassTask(Task):
+class MockTask(Task):
+    def __init__(self, event = threading.Event()):
+        self.event = event
     def target(self):
-        pass
+        self.event.set()
 
 def test_task_subclass_method_target():
-    pass
+    task = MockTask()
+    task.start()
+    task.wait()
+    assert task.event.is_set()
 
