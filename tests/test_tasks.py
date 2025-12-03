@@ -211,3 +211,10 @@ def test_task_class_name():
     assert 'Task[bar]' == str(implicit_name)
     default_name = Task()
     assert 'Task[lambda:' in str(default_name) and ']' == str(default_name)[-1]
+
+def test_task_group_precedence_with_cycles():
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    task2 = Task(name = '2')
+    group.add_precedence(task1, task1) # TODO: what happens with repeat?
+    group.add_precedence(task1, task2, task1) # TODO: what happens with cycle?

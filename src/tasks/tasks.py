@@ -9,7 +9,7 @@ class TaskGroup:
 
     def __init__(self, *args):
         self.tasks = set(args)
-        self.graph = networkx.Graph()
+        self.graph = networkx.DiGraph()
         # TODO: manage stdout and stderr for all child tasks.
         # TODO: create some kind of cancel Event, or perhaps a Queue.
         pass
@@ -17,7 +17,7 @@ class TaskGroup:
         # TODO: print the TaskGraph as a mermaid diagram representation.
         pass
     def start(self):
-        for task in self.tasks:
+        for task in networkx.topological_sort(self.graph):
             task.start()
         # TODO: start each start task
         # TODO: store start time of task graph
@@ -43,12 +43,17 @@ class TaskGroup:
     def add_precedence(self, *tasks):
         if len(tasks) < 2:
             raise TaskGroup.Exception('TaskGroup.add_precedence called with fewer than two arguments. Precedence constraints must be expressed in terms of 2 or more tasks')
+        # self.add_tasks(*tasks) # TODO: tasks can be added through add_precedence
+        for i in range(len(tasks) - 1):
+            self.graph.add_edge(tasks[i], tasks[i + 1])
+        print(self.graph.edges)
         # TODO: adds an ordering constraint, arguments proceed from left-to-right in
         # diminishing precedence
         # TODO: raise error if port_ready and ssh_ready have not been added as tasks.
         pass
     def add_tasks(self, *args):
         self.tasks.update(args)
+        self.graph.add_nodes_from(args)
 
 
 
@@ -97,11 +102,12 @@ class Task:
     class Thread(threading.Thread):
         count = itertools.count(0) # not sure what maximum value is, internet suggests infinite
         lock = threading.Lock()
-        def __init__(self, *args, **kwargs):
+        def __init__(self, task: Task, *args, **kwargs):
             super().__init__(*args, **kwargs)
             with Task.Thread.lock:
                 self.id = next(Task.Thread.count)
             self.name = f"TaskThread-{self.id}"
+            self.task_id = task.id
 
     def __init__(self, target = None, name = None, *args, **kwargs):
         self.id = id(self)
@@ -117,8 +123,7 @@ class Task:
     def __str__(self):
         return f"Task[{self.name}]"
     def start(self):
-        self.thread = Task.Thread(target=self.target,args=(),kwargs={})
-        self.thread.task_id = self.id
+        self.thread = Task.Thread(task=self, target=self.target,args=(),kwargs={})
         print(f"starting [Task: {self.id}] [Thread: {self.thread.id}]")
         self.thread.start()
     def wait(self, timeout = None):
