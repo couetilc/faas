@@ -212,9 +212,42 @@ def test_task_class_name():
     default_name = Task()
     assert 'Task[lambda:' in str(default_name) and ']' == str(default_name)[-1]
 
-def test_task_group_precedence_with_cycles():
+# TODO: how to make sure added nodes are a directed acyclic graph?
+def test_task_group_precedence_with_self_loop():
+    """
+    A self-loop can produce a never-ending task group, they are not allowed.
+    """
     group = TaskGroup()
     task1 = Task(name = '1')
     task2 = Task(name = '2')
-    group.add_precedence(task1, task1) # TODO: what happens with repeat?
-    group.add_precedence(task1, task2, task1) # TODO: what happens with cycle?
+    with pytest.raises(TaskGroup.Exception) as e:
+        group.add_precedence(task1, task1)
+    assert 'Cycle detected' in str(e)
+
+def test_task_group_precedence_with_cycles():
+    """
+    A cycle can produce a never-ending task group, they are not allowed.
+    """
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    task2 = Task(name = '2')
+    with pytest.raises(TaskGroup.Exception) as e:
+        group.add_precedence(task1, task2, task1)
+    assert 'Cycle detected' in str(e)
+
+def test_task_group_precedence_with_cycles_recovery():
+    """
+    If an add_precedence call produces a cycle, the TaskGroup graph should not be
+    updated, the edges should be discarded, and the graph should still conform to all
+    constraints.
+    """
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    task2 = Task(name = '2')
+    with pytest.raises(TaskGroup.Exception) as e:
+        group.add_precedence(task1, task1)
+    assert not isinstance(group.verify_constraints(), TaskGroup.Exception)
+
+# TODO: tasks that are not depdendent on each other should be started concurrently.
+def test_task_group_start_concurrently():
+    pass

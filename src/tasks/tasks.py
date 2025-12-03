@@ -42,18 +42,25 @@ class TaskGroup:
         pass
     def add_precedence(self, *tasks):
         if len(tasks) < 2:
-            raise TaskGroup.Exception('TaskGroup.add_precedence called with fewer than two arguments. Precedence constraints must be expressed in terms of 2 or more tasks')
+            raise TaskGroup.Exception(
+                'TaskGroup.add_precedence called with fewer than two arguments. '
+                'Precedence constraints must be expressed in terms of 2 or more tasks')
         # self.add_tasks(*tasks) # TODO: tasks can be added through add_precedence
         for i in range(len(tasks) - 1):
             self.graph.add_edge(tasks[i], tasks[i + 1])
-        print(self.graph.edges)
-        # TODO: adds an ordering constraint, arguments proceed from left-to-right in
-        # diminishing precedence
-        # TODO: raise error if port_ready and ssh_ready have not been added as tasks.
-        pass
+        if exc := self.verify_constraints():
+            for i in range(len(tasks) - 1):
+                self.graph.remove_edge(tasks[i], tasks[i + 1])
+            raise exc
     def add_tasks(self, *args):
         self.tasks.update(args)
         self.graph.add_nodes_from(args)
+    def verify_constraints(self) -> None | TaskGroup.Exception:
+        if not networkx.is_directed_acyclic_graph(self.graph):
+            return TaskGroup.Exception(
+                'Cycle detected. '
+                'Precedence constraints must not introduce cycles. '
+                'A TaskGroup must be a directed acyclic graph.')
 
 
 
