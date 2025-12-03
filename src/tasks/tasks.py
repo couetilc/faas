@@ -55,13 +55,15 @@ class TaskGroup:
     def add_tasks(self, *args):
         self.tasks.update(args)
         self.graph.add_nodes_from(args)
+    def remove_tasks(self, *args):
+        self.tasks.difference_update(args)
+        self.graph.remove_nodes_from(args)
     def verify_constraints(self) -> None | TaskGroup.Exception:
         if not networkx.is_directed_acyclic_graph(self.graph):
             return TaskGroup.Exception(
                 'Cycle detected. '
                 'Precedence constraints must not introduce cycles. '
                 'A TaskGroup must be a directed acyclic graph.')
-
 
 
 class Task:

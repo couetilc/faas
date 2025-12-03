@@ -259,6 +259,20 @@ def test_task_group_stores_tasks():
     assert task2 in group.tasks
     assert task3 in group.tasks
 
+def test_task_group_removes_tasks():
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    group.add_tasks(task1)
+    assert task1 in group.tasks
+    group.remove_tasks(task1)
+    assert task1 not in group.tasks
+    task2 = Task(name = '2')
+    group.add_tasks(task1, task2)
+    assert task1 in group.tasks
+    assert task2 in group.tasks
+    group.remove_tasks(task1, task2)
+    assert task1 not in group.tasks
+    assert task2 not in group.tasks
 
 # TODO: tasks that are not depdendent on each other should be started concurrently.
 def test_task_group_start_concurrently():
