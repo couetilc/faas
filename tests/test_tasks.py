@@ -16,25 +16,6 @@ def assert_no_threads_remain():
 def fixture_assert_no_threads_remain():
     assert_no_threads_remain()
 
-@pytest.fixture(autouse=True)
-def ignore_task_exception_from_default_target_method(request):
-    """
-    The base Task class raises an error if not overriden. Some tests use the base class
-    for simplicity. Let's ignore that specific error for all tests. Otherwise, if a test
-    fails while using the base Task class, the Task.Exception will display and distract.
-    """
-    def hook(args):
-        exc_type, exc_value, exc_traceback, thread = args
-        if (
-            exc_type == Task.Exception and
-            'MUST implement method "target"' in str(exc_value)
-        ):
-            return None # ignore exception
-        return args # do not ignore exception
-    threading.excepthook = hook
-    yield
-    threading.excepthook = threading.__excepthook__
-
 @contextlib.contextmanager
 def assert_tasks(*, nthread = None, order = None):
     """
@@ -140,30 +121,6 @@ def assert_tasks(*, nthread = None, order = None):
 # run_once.add_tasks(image_task, qemu_vm, port_ready, ssh_ready)
 # run_once.add_precedence(port_ready, ssh_ready)
 
-def test_task_class_has_name():
-    assert 'foo' == Task('foo').name
-    assert 'foo' == Task(name = 'foo').name
-
-def test_task_subclass_has_name():
-    class FooTask(Task):
-        pass
-    assert 'foo' == FooTask('foo').name
-    assert 'foo' == FooTask(name = 'foo').name
-
-def test_task_class_has_name_default():
-    assert 'Task' == Task().name
-    assert 'Task' == Task().name
-
-def test_task_subclass_has_name_default():
-    class FooTask(Task):
-        pass
-    assert 'FooTask' == FooTask().name
-    assert 'FooTask' == FooTask().name
-
-def test_task_class_method_target_raises_error():
-    with pytest.raises(Task.Exception) as e:
-        Task().target()
-    assert 'MUST implement method "target"' in str(e)
 
 def test_task_class_method_start_and_wait():
     task = Task()
@@ -181,18 +138,13 @@ def test_task_class_method_start_and_wait_cycle():
         task.start()
         task.wait()
 
-class MockTask(Task):
-    def __init__(self, event = threading.Event()):
-        self.event = event
-    def target(self):
-        self.event.set()
-
 def test_task_subclass_method_target():
-    task = MockTask()
-    assert not task.event.is_set()
+    event = threading.Event()
+    task = Task(lambda: event.set())
+    assert not event.is_set()
     task.start()
     task.wait()
-    assert task.event.is_set()
+    assert event.is_set()
 
 def test_task_group():
     group = TaskGroup()
@@ -235,12 +187,20 @@ def test_task_group_precedence_improper_arguments():
         group.add_precedence(task1)
     assert 'constraints must be expressed in terms of 2 or more' in str(e)
 
+def test_task_initialize_target_arg():
+    event = threading.Event()
+    task = Task(lambda: event.set())
+    assert not event.is_set()
+    with assert_tasks(nthread = 1):
+        task.start()
+        task.wait()
+    assert event.is_set()
 
-# TODO: my new API for a Task may just be:
-# class Task:
-#     def __init__(target, *args, **kwargs):
-#         self.target = target if target else lambda: None
-#         self.args = args
-#         self.kwargs = kwargs
-#     def start():
-# so I don't have to worry about subclassing or unimplemented target methods
+def test_task_initialize_target_kwarg():
+    event = threading.Event()
+    task = Task(target=lambda: event.set())
+    assert not event.is_set()
+    with assert_tasks(nthread = 1):
+        task.start()
+        task.wait()
+    assert event.is_set()

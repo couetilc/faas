@@ -56,6 +56,19 @@ class Task:
     """
     A Task is the basic unit of execution.
 
+    Usage:
+
+    Specify the function to run in a task thread by passing the "target" argument as
+    either the first argument in the argument list or as a keyword argument.
+
+    ```py
+    Task(lambda: print("Hello!"))
+    # or 
+    Task(target = lambda: print("Hello!"))
+    ```
+
+    Note:
+
     Each task instance has a unique id. Each thread started by a task is assigned a
     task-unique id that is stored on the thread object. The task id is also stored on
     the thread object. This is used by utilities in the test suite to track task/thread
@@ -81,16 +94,13 @@ class Task:
             super().__init__(*args, **kwargs)
             with Task.Thread.lock:
                 self.id = next(Task.Thread.count)
-            self.name = f"{self.__class__.__name__}-{self.id}"
+            self.name = f"TaskThread-{self.id}"
 
-    def __init__(self, name = None):
-        self.name = name
-        if self.name == None:
-            self.name = self.__class__.__name__
+    def __init__(self, target = None, *args, **kwargs):
         self.id = id(self)
-    def target(self):
-        raise Task.Exception(
-            'subclasses of class "Task" MUST implement method "target"')
+        self.target = target if target else lambda: None
+        self.args = args
+        self.kwargs = kwargs
     def start(self):
         self.thread = Task.Thread(target=self.target,args=(),kwargs={})
         self.thread.task_id = self.id
