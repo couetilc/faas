@@ -67,6 +67,13 @@ class Task:
     Task(target = lambda: print("Hello!"))
     ```
 
+    Give the Task a name using the "name" parameter
+
+    ```py
+    task = Task(name = "pass")
+    assert str(task) == "Task[pass]"
+    ```
+
     Note:
 
     Each task instance has a unique id. Each thread started by a task is assigned a
@@ -96,14 +103,18 @@ class Task:
                 self.id = next(Task.Thread.count)
             self.name = f"TaskThread-{self.id}"
 
-    def __init__(self, target = None, *args, **kwargs):
+    def __init__(self, target = None, name = None, *args, **kwargs):
         self.id = id(self)
         self.target = target if target else lambda: None
         self.args = args
         self.kwargs = kwargs
+        self.name = name if name else f"id:{self.id}"
+    def __str__(self):
+        return f"Task[{self.name}]"
     def start(self):
         self.thread = Task.Thread(target=self.target,args=(),kwargs={})
         self.thread.task_id = self.id
+        print(f"starting [Task: {self.id}] [Thread: {self.thread.id}]")
         self.thread.start()
     def wait(self, timeout = None):
         self.thread.join(timeout)

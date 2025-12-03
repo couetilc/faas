@@ -88,7 +88,7 @@ def assert_tasks(*, nthread = None, order = None):
                 f"Started {tracker.nthread} non-main thread(s), expected {nthread})")
         def assert_order(self, before: Task, after: Task):
             assert min(self.tasks[before.id]) < min(self.tasks[after.id]), (
-                'task "{1}" came before "{0}", expected "{0}" to come before "{1}"'.format(before.name, after.name))
+                'task "{1}" came before "{0}", expected "{0}" to come before "{1}"'.format(before, after))
 
     tracker = ThreadTracker()
 
@@ -120,7 +120,6 @@ def assert_tasks(*, nthread = None, order = None):
 # # evaluated with all tasks considered.
 # run_once.add_tasks(image_task, qemu_vm, port_ready, ssh_ready)
 # run_once.add_precedence(port_ready, ssh_ready)
-
 
 def test_task_class_method_start_and_wait():
     task = Task()
@@ -163,17 +162,15 @@ def test_task_group_start_two_tasks():
         group.start()
         group.wait()
 
-
 def test_task_group_precedence():
     group = TaskGroup()
-    task1 = Task()
-    task2 = Task()
+    task1 = Task(name = '1')
+    task2 = Task(name = '2')
     group.add_tasks(task1, task2)
     group.add_precedence(task2, task1)
     with assert_tasks(nthread = 2, order = [task2, task1]):
         group.start()
         group.wait()
-
 
 def test_task_group_precedence_improper_arguments():
     group = TaskGroup()
@@ -204,3 +201,7 @@ def test_task_initialize_target_kwarg():
         task.start()
         task.wait()
     assert event.is_set()
+
+def test_task_class_name():
+    assert 'Task[id:' in str(Task()) and ']' == str(Task())[-1]
+    assert 'Task[foo]' == str(Task(name = 'foo'))
