@@ -248,6 +248,18 @@ def test_task_group_precedence_with_cycles_recovery():
         group.add_precedence(task1, task1)
     assert not isinstance(group.verify_constraints(), TaskGroup.Exception)
 
+def test_task_group_stores_tasks():
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    task2 = Task(name = '2')
+    task3 = Task(name = '3')
+    group.add_tasks(task1)
+    assert task1 in group.tasks
+    group.add_tasks(task2, task3)
+    assert task2 in group.tasks
+    assert task3 in group.tasks
+
+
 # TODO: tasks that are not depdendent on each other should be started concurrently.
 def test_task_group_start_concurrently():
     pass
