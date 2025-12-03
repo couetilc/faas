@@ -203,5 +203,11 @@ def test_task_initialize_target_kwarg():
     assert event.is_set()
 
 def test_task_class_name():
-    assert 'Task[id:' in str(Task()) and ']' == str(Task())[-1]
-    assert 'Task[foo]' == str(Task(name = 'foo'))
+    explicit_name = Task(name = 'foo')
+    assert 'Task[foo]' == str(explicit_name)
+    def bar():
+        pass
+    implicit_name = Task(target = bar)
+    assert 'Task[bar]' == str(implicit_name)
+    default_name = Task()
+    assert 'Task[lambda:' in str(default_name) and ']' == str(default_name)[-1]

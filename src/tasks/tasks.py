@@ -108,7 +108,12 @@ class Task:
         self.target = target if target else lambda: None
         self.args = args
         self.kwargs = kwargs
-        self.name = name if name else f"id:{self.id}"
+        if name:
+            self.name = name
+        elif self.target.__name__ != '<lambda>':
+            self.name = self.target.__name__
+        else:
+            self.name = f"lambda:{self.id}"
     def __str__(self):
         return f"Task[{self.name}]"
     def start(self):
