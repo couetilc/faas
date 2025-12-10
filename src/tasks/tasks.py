@@ -59,21 +59,21 @@ class TaskGroup:
                 self.graph.remove_edge(tasks[i], tasks[i + 1])
             raise exc
     def add_tasks(self, *args):
-        edges = list()
-        for task in args:
-            for arg in task.args:
-                if isinstance(arg, TaskGroup.Dependency):
-                    edges.append((arg.task, task))
-            for key in task.kwargs:
-                arg = task.kwargs[key]
-                if isinstance(arg, TaskGroup.Dependency):
-                    edges.append((arg.task, task))
         self.tasks.update(args) # not sure this works unilaterally if something is a TaskGroup.Dependency. Also need to make sure every is a Task
         self.graph.add_nodes_from(args)
-        # TODO: add edges
-        for edge in edges:
-            print("edge", *edge)
-            self.graph.add_edge(*edge)
+        def check_dependency(arg):
+            if isinstance(arg, TaskGroup.Dependency):
+                if arg.task not in self.tasks:
+                    raise TaskGroup.Exception(
+                        'Detected TaskGroup Dependency wrapping unrecognized task. '
+                        'TaskGroup Dependencies must be added to the TaskGroup. '
+                    )
+                self.graph.add_edge(arg.task, task)
+        for task in args:
+            for arg in task.args:
+                check_dependency(arg)
+            for key in task.kwargs:
+                check_dependency(task.kwargs[key])
     def remove_tasks(self, *args):
         self.tasks.difference_update(args)
         self.graph.remove_nodes_from(args)

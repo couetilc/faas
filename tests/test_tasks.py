@@ -295,7 +295,7 @@ def test_task_group_removes_tasks():
     assert task2 not in group.tasks
 
 # TODO: I think data dependencies are the next thing to tackle.
-def test_task_group_data_dependencies_are_ordered():
+def test_task_group_data_dependencies_are_ordered_args():
     group = TaskGroup()
     task1 = Task(name = '1')
     task2 = Task(name = '2', args = [TaskGroup.Dependency(task1)])
@@ -304,7 +304,25 @@ def test_task_group_data_dependencies_are_ordered():
         group.start()
         group.wait()
 
-# TODO: test for whether TaskGroup.Dependency is actually in the TaskGroup
+def test_task_group_data_dependencies_are_ordered_kwargs():
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    task2 = Task(name = '2', kwargs = {'data': TaskGroup.Dependency(task1)})
+    group.add_tasks(task2, task1)
+    with assert_tasks(nthread = 2, order = [task1, task2]):
+        group.start()
+        group.wait()
+
+def test_task_group_data_dependency_is_in_task_group():
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    task2 = Task(name = '2', kwargs = {'data': TaskGroup.Dependency(task1)})
+    with pytest.raises(TaskGroup.Exception) as e:
+        group.add_tasks(task2)
+        assert 'TaskGroup Dependency wrapping unrecognized task' in str(e)
+
+
+
 # TODO: test for whether cycles from data dependencies are detected
 
 # def test_task_group_data_dependencies_share_data():
