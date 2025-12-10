@@ -295,33 +295,36 @@ def test_task_group_removes_tasks():
     assert task2 not in group.tasks
 
 # TODO: I think data dependencies are the next thing to tackle.
-def test_task_group_data_dependencies():
+def test_task_group_data_dependencies_are_ordered():
     group = TaskGroup()
-    # task1 = Task(name = '1')
-    # task2 = Task(name = '2', data = TaskGroup.Dependency(task1))
-    # group.add_tasks(task2, task1)
-    # with assert_tasks(nthread = 2, order = [task1, task2]):
-    #     group.start()
-    #     group.wait()
-
-def test_task_group_data_dependencies_share_data():
-    group = TaskGroup()
-    task1 = Task(name = '1', target=lambda: 'foo')
-    def assert_foo(data):
-        assert data == 'foo'
-    task2 = Task(
-        name = '2',
-        target=assert_foo,
-        data = TaskGroup.Dependency(task1),
-    )
+    task1 = Task(name = '1')
+    task2 = Task(name = '2', args = [TaskGroup.Dependency(task1)])
     group.add_tasks(task2, task1)
-    # with assert_tasks(nthread = 2, order = [task1, task2]):
-    group.start()
-    group.wait()
+    with assert_tasks(nthread = 2, order = [task1, task2]):
+        group.start()
+        group.wait()
+
+# TODO: test for whether TaskGroup.Dependency is actually in the TaskGroup
+# TODO: test for whether cycles from data dependencies are detected
+
+# def test_task_group_data_dependencies_share_data():
+#     group = TaskGroup()
+#     task1 = Task(name = '1', target=lambda: 'foo')
+#     def assert_foo(data):
+#         assert data == 'foo'
+#     task2 = Task(
+#         name = '2',
+#         target=assert_foo,
+#     )
+#     task2.set_args(data = TaskGroup.Dependency(task1))
+#     group.add_tasks(task2, task1)
+#     # with assert_tasks(nthread = 2, order = [task1, task2]):
+#     group.start()
+#     group.wait()
 
 # TODO: tasks that are not depdendent on each other should be started concurrently.
-def test_task_group_start_concurrently():
-    pass
+# def test_task_group_start_concurrently():
+#     pass
 
 
 # qemu_vm = QemuVmTask(image = TaskGroup.Dependency(overlay_image, 'image'))

@@ -13,7 +13,7 @@ class TaskGroup:
         # Task(arg = TaskGroup.Dependency(task, param)) # stores "param" of output in single variable
         # but what about a return value that isn't a dictionary? Like a single value, or a tuple?
         def __init__(self, task, param = None):
-            pass
+            self.task = task
 
     def __init__(self, *args):
         self.tasks = set(args)
@@ -37,8 +37,6 @@ class TaskGroup:
     def wait(self):
         for task in self.tasks:
             task.wait()
-        # TODO: will wait for all tasks in the graph to complete
-        pass
     def set_stdout():
         # TODO: will set stdout file for task group
         pass
@@ -61,8 +59,21 @@ class TaskGroup:
                 self.graph.remove_edge(tasks[i], tasks[i + 1])
             raise exc
     def add_tasks(self, *args):
-        self.tasks.update(args)
+        edges = list()
+        for task in args:
+            for arg in task.args:
+                if isinstance(arg, TaskGroup.Dependency):
+                    edges.append((arg.task, task))
+            for key in task.kwargs:
+                arg = task.kwargs[key]
+                if isinstance(arg, TaskGroup.Dependency):
+                    edges.append((arg.task, task))
+        self.tasks.update(args) # not sure this works unilaterally if something is a TaskGroup.Dependency. Also need to make sure every is a Task
         self.graph.add_nodes_from(args)
+        # TODO: add edges
+        for edge in edges:
+            print("edge", *edge)
+            self.graph.add_edge(*edge)
     def remove_tasks(self, *args):
         self.tasks.difference_update(args)
         self.graph.remove_nodes_from(args)
@@ -126,7 +137,7 @@ class Task:
             self.name = f"TaskThread-{self.id}"
             self.task_id = task.id
 
-    def __init__(self, target = None, name = None, *args, **kwargs):
+    def __init__(self, target = None, name = None, args = list(), kwargs = dict()):
         self.id = id(self)
         self.target = target if target else lambda: None
         self.args = args
@@ -145,5 +156,8 @@ class Task:
         self.thread.start()
     def wait(self, timeout = None):
         self.thread.join(timeout)
+    def set_args(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
 
 
