@@ -59,8 +59,9 @@ class TaskGroup:
                 self.graph.remove_edge(tasks[i], tasks[i + 1])
             raise exc
     def add_tasks(self, *args):
-        self.tasks.update(args) # not sure this works unilaterally if something is a TaskGroup.Dependency. Also need to make sure every is a Task
+        self.tasks.update(args)
         self.graph.add_nodes_from(args)
+        edges = list()
         def check_dependency(arg):
             if isinstance(arg, TaskGroup.Dependency):
                 if arg.task not in self.tasks:
@@ -68,12 +69,24 @@ class TaskGroup:
                         'Detected TaskGroup Dependency wrapping unrecognized task. '
                         'TaskGroup Dependencies must be added to the TaskGroup. '
                     )
-                self.graph.add_edge(arg.task, task)
-        for task in args:
-            for arg in task.args:
-                check_dependency(arg)
-            for key in task.kwargs:
-                check_dependency(task.kwargs[key])
+                edges.append((arg.task, task))
+        try:
+            for task in args:
+                for arg in task.args:
+                    check_dependency(arg)
+                for key in task.kwargs:
+                    check_dependency(task.kwargs[key])
+            for edge in edges:
+                self.graph.add_edge(*edge)
+            if exc := self.verify_constraints():
+                raise exc
+        except TaskGroup.Exception as e:
+            for edge in edges:
+                self.graph.remove_edge(*edge)
+            self.tasks.difference_update(args)
+            self.graph.remove_nodes_from(args)
+            raise e
+
     def remove_tasks(self, *args):
         self.tasks.difference_update(args)
         self.graph.remove_nodes_from(args)
@@ -81,7 +94,7 @@ class TaskGroup:
         if not networkx.is_directed_acyclic_graph(self.graph):
             return TaskGroup.Exception(
                 'Cycle detected. '
-                'Precedence constraints must not introduce cycles. '
+                'Ordering constraints must not introduce cycles. '
                 'A TaskGroup must be a directed acyclic graph.')
 
 

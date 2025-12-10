@@ -313,15 +313,29 @@ def test_task_group_data_dependencies_are_ordered_kwargs():
         group.start()
         group.wait()
 
-def test_task_group_data_dependency_is_in_task_group():
+def test_task_group_data_dependency_is_not_in_task_group():
     group = TaskGroup()
     task1 = Task(name = '1')
     task2 = Task(name = '2', kwargs = {'data': TaskGroup.Dependency(task1)})
     with pytest.raises(TaskGroup.Exception) as e:
         group.add_tasks(task2)
         assert 'TaskGroup Dependency wrapping unrecognized task' in str(e)
+    assert task1 not in group.tasks
+    assert task2 not in group.tasks
+    assert not group.graph.has_edge(task1, task2)
+    assert task1 not in group.graph
+    assert task2 not in group.graph
 
-
+def test_task_group_data_dependency_with_self_loop():
+    group = TaskGroup()
+    task1 = Task(name = '1')
+    task1.set_args(TaskGroup.Dependency(task1))
+    with pytest.raises(TaskGroup.Exception) as e:
+        group.add_tasks(task1)
+        assert 'Cycle detected' in str(e)
+    assert task1 not in group.tasks
+    assert not group.graph.has_edge(task1, task1)
+    assert task1 not in group.graph
 
 # TODO: test for whether cycles from data dependencies are detected
 
