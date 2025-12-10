@@ -2,6 +2,7 @@ import pytest
 import threading
 import contextlib
 import collections
+import queue
 from tasks.tasks import Task, TaskGroup
 
 def assert_no_threads_remain():
@@ -107,6 +108,25 @@ def assert_tasks(*, nthread = None, order = None):
             raise Exception("Invalid order argument to assert_tasks. order must contain two or more tasks.")
         for i in range(len(order) - 1):
             tracker.assert_order(order[i], order[i + 1])
+
+@pytest.fixture(autouse=True)
+def raise_thread_exceptions_in_main_thread():
+    """
+    This fixture takes exceptions raised in a thread and raises them in a main thread.
+    This is done to signal a test failure to pytest. No threads in our test suite should
+    raise uncaught exceptions.
+    """
+    exceptions = queue.Queue()
+    def hook(args):
+        exc_type, exc_value, exc_traceback, thread = args
+        if exc_type != Task.Exception:
+            exceptions.put(exc_type(exc_value).with_traceback(exc_traceback))
+            return args
+    threading.excepthook = hook
+    yield
+    threading.excepthook = threading.__excepthook__
+    while not exceptions.empty():
+        raise exceptions.get()
 
 # Goal
 # run_once = TaskGroup(name = 'run tests once')
@@ -274,6 +294,41 @@ def test_task_group_removes_tasks():
     assert task1 not in group.tasks
     assert task2 not in group.tasks
 
+# TODO: I think data dependencies are the next thing to tackle.
+def test_task_group_data_dependencies():
+    group = TaskGroup()
+    # task1 = Task(name = '1')
+    # task2 = Task(name = '2', data = TaskGroup.Dependency(task1))
+    # group.add_tasks(task2, task1)
+    # with assert_tasks(nthread = 2, order = [task1, task2]):
+    #     group.start()
+    #     group.wait()
+
+def test_task_group_data_dependencies_share_data():
+    group = TaskGroup()
+    task1 = Task(name = '1', target=lambda: 'foo')
+    def assert_foo(data):
+        assert data == 'foo'
+    task2 = Task(
+        name = '2',
+        target=assert_foo,
+        data = TaskGroup.Dependency(task1),
+    )
+    group.add_tasks(task2, task1)
+    # with assert_tasks(nthread = 2, order = [task1, task2]):
+    group.start()
+    group.wait()
+
 # TODO: tasks that are not depdendent on each other should be started concurrently.
 def test_task_group_start_concurrently():
     pass
+
+
+# qemu_vm = QemuVmTask(image = TaskGroup.Dependency(overlay_image, 'image'))
+# port_ready = PortReadyTask(port = TaskGroup.Dependency(vm, 'ssh_port'))
+# ssh_ready = PortReadyTask(port = TaskGroup.Dependency(vm, 'ssh_port'))
+# # calculate the correctness of the task dependency graph on every add,
+# # but allow adding multiple tasks at once and have dependency graph correctness
+# # evaluated with all tasks considered.
+# run_once.add_tasks(image_task, qemu_vm, port_ready, ssh_ready)
+# run_once.add_precedence(port_ready, ssh_ready)

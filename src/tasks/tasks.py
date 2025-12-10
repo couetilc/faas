@@ -7,6 +7,14 @@ class TaskGroup:
     class Exception(Exception):
         pass
 
+    class Dependency():
+        # TODO: have two interfaces
+        # Task(arg = TaskGroup.Dependency(task)) # stores all of task output in single variable
+        # Task(arg = TaskGroup.Dependency(task, param)) # stores "param" of output in single variable
+        # but what about a return value that isn't a dictionary? Like a single value, or a tuple?
+        def __init__(self, task, param = None):
+            pass
+
     def __init__(self, *args):
         self.tasks = set(args)
         self.graph = networkx.DiGraph()
