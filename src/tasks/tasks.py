@@ -24,7 +24,7 @@ class TaskGroup:
     def __init__(self, *args):
         self.tasks = set(args)
         self.graph = networkx.DiGraph()
-        self.eventq = queue.Queue
+        self.eventq = queue.Queue()
         # TODO: manage stdout and stderr for all child tasks.
         # TODO: create some kind of cancel Event, or perhaps a Queue.
         pass
@@ -42,7 +42,8 @@ class TaskGroup:
             #     if TaskGroup.Dependency.match(tail, arg):
             #       TaskGroup.Dependency.inject(task, tail, arg) # something like this
             task.start()
-            s = "res: " + str(task.thread.result)
+            task_id, result = self.eventq.get()
+            s = "res: " + str(result)
         # TODO: store start time of task graph
         # TODO: store end time of task graph
         pass
@@ -91,6 +92,8 @@ class TaskGroup:
                     check_dependency(arg)
                 for key in task.kwargs:
                     check_dependency(task.kwargs[key])
+                task.add_hook('on_success', self._task_on_event)
+                task.add_hook('on_exception', self._task_on_event)
             for edge in edges:
                 self.graph.add_edge(*edge)
             if exc := self.verify_constraints():
@@ -100,6 +103,9 @@ class TaskGroup:
                 self.graph.remove_edge(*edge)
             self.tasks.difference_update(args)
             self.graph.remove_nodes_from(args)
+            for task in args:
+                task.remove_hook('on_success', self._task_on_event)
+                task.remove_hook('on_exception', self._task_on_event)
             raise e
     def remove_tasks(self, *args):
         self.tasks.difference_update(args)
@@ -110,6 +116,8 @@ class TaskGroup:
                 'Cycle detected. '
                 'Ordering constraints must not introduce cycles. '
                 'A TaskGroup must be a directed acyclic graph.')
+    def _task_on_event(self, event):
+        self.eventq.put(event)
 
 
 class Task:
@@ -157,7 +165,7 @@ class Task:
     class Thread(threading.Thread):
         count = itertools.count(0) # not sure what maximum value is, internet suggests infinite
         lock = threading.Lock()
-        def __init__(self, task: Task, on_success, *args, **kwargs):
+        def __init__(self, task: Task, on_success, on_exception, *args, **kwargs):
             super().__init__(*args, **kwargs)
             with Task.Thread.lock:
                 self.id = next(Task.Thread.count)
@@ -165,6 +173,7 @@ class Task:
             self.task_id = task.id
             self.result = None
             self.on_success = on_success
+            self.on_exception = on_exception
         def run(self):
             """
             Override threading.Thread.run to store return value in self.result.
@@ -173,9 +182,11 @@ class Task:
             try:
                 if self._target is not None:
                     self.result = self._target(*self._args, **self._kwargs)
-                    if self.on_success:
-                        self.on_success(self.result)
+                    self.on_success((self.task_id, self.result))
                     # TODO: publish to task group queue? or have hooks?
+            except Exception as e:
+                self.on_exception((self.task_id, e))
+                raise e
             finally:
                 del self._target, self._args, self._kwargs
 
@@ -190,7 +201,7 @@ class Task:
             self.name = self.target.__name__
         else:
             self.name = f"lambda:{self.id}"
-        self.hooks = {'on_success': set()}
+        self.hooks = {'on_success': set(), 'on_exception': set()}
     def __str__(self):
         return f"Task[{self.name}]"
     def start(self):
@@ -198,6 +209,7 @@ class Task:
             task=self,
             target=self.target,
             on_success = lambda *a, **kw: self.trigger_hook('on_success', *a, **kw),
+            on_exception = lambda *a, **kw: self.trigger_hook('on_exception', *a, **kw),
             args=(),
             kwargs={},
         )

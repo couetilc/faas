@@ -369,7 +369,9 @@ def test_task_group_data_dependencies_share_data():
 
 def test_task_hook_on_success():
     task1 = Task(name = '1', target = lambda: 'foo')
-    def assert_foo(result):
+    def assert_foo(event):
+        task_id, result = event
+        assert task_id == id(task1)
         assert result == 'foo'
     task1.add_hook('on_success', assert_foo)
     with assert_tasks(nthread = 1):
@@ -378,9 +380,13 @@ def test_task_hook_on_success():
 
 def test_task_hook_on_success_multiple():
     task1 = Task(name = '1', target = lambda: 'foo')
-    def assert_foo(result):
+    def assert_foo(event):
+        task_id, result = event
+        assert task_id == id(task1)
         assert result == 'foo'
-    def assert_not_bar(result):
+    def assert_not_bar(event):
+        task_id, result = event
+        assert task_id == id(task1)
         assert result != 'bar'
     task1.add_hook('on_success', assert_foo)
     task1.add_hook('on_success', assert_not_bar)
@@ -390,7 +396,9 @@ def test_task_hook_on_success_multiple():
 
 def test_task_hook_removal():
     task1 = Task(name = '1', target = lambda: 'foo')
-    def assert_not_foo(result):
+    def assert_not_foo(event):
+        task_id, result = event
+        task_id = id(task1)
         assert result != 'foo'
     task1.add_hook('on_success', assert_not_foo)
     task1.remove_hook('on_success', assert_not_foo)
