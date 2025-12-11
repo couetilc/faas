@@ -352,23 +352,65 @@ def test_task_group_data_dependency_with_cycle():
     assert task1 not in group.graph
     assert task2 not in group.graph
 
+def test_task_group_data_dependencies_share_data():
+    group = TaskGroup()
+    task1 = Task(name = '1', target=lambda: 'foo')
+    def assert_foo(data):
+        assert data == 'foo'
+    task2 = Task(
+        name = '2',
+        target=assert_foo,
+    )
+    task2.set_args(data = TaskGroup.Dependency(task1))
+    group.add_tasks(task2, task1)
+    with assert_tasks(nthread = 2, order = [task1, task2]):
+        group.start()
+        group.wait()
 
-# TODO: test for whether cycles from data dependencies are detected
+def test_task_hook_on_success():
+    task1 = Task(name = '1', target = lambda: 'foo')
+    def assert_foo(result):
+        assert result == 'foo'
+    task1.add_hook('on_success', assert_foo)
+    with assert_tasks(nthread = 1):
+        task1.start()
+        task1.wait()
 
-# def test_task_group_data_dependencies_share_data():
-#     group = TaskGroup()
-#     task1 = Task(name = '1', target=lambda: 'foo')
-#     def assert_foo(data):
-#         assert data == 'foo'
-#     task2 = Task(
-#         name = '2',
-#         target=assert_foo,
-#     )
-#     task2.set_args(data = TaskGroup.Dependency(task1))
-#     group.add_tasks(task2, task1)
-#     # with assert_tasks(nthread = 2, order = [task1, task2]):
-#     group.start()
-#     group.wait()
+def test_task_hook_on_success_multiple():
+    task1 = Task(name = '1', target = lambda: 'foo')
+    def assert_foo(result):
+        assert result == 'foo'
+    def assert_not_bar(result):
+        assert result != 'bar'
+    task1.add_hook('on_success', assert_foo)
+    task1.add_hook('on_success', assert_not_bar)
+    with assert_tasks(nthread = 1):
+        task1.start()
+        task1.wait()
+
+def test_task_hook_removal():
+    task1 = Task(name = '1', target = lambda: 'foo')
+    def assert_not_foo(result):
+        assert result != 'foo'
+    task1.add_hook('on_success', assert_not_foo)
+    task1.remove_hook('on_success', assert_not_foo)
+    with assert_tasks(nthread = 1):
+        task1.start()
+        task1.wait()
+
+def test_task_hook_unknown():
+    task1 = Task(name = '1')
+    with pytest.raises(Task.Exception) as e:
+        task1.add_hook('bar', lambda: None)
+    assert 'add unknown hook "bar"' in str(e)
+    with pytest.raises(Task.Exception) as e:
+        task1.remove_hook('bar', lambda: None)
+    assert 'remove unknown hook "bar"' in str(e)
+
+def test_order():
+    group = TaskGroup()
+    task1 = Task(name = '1', target = lambda: 'foo')
+    task2 = Task(name = '2', target = lambda: 'bar')
 
 # TODO: tasks that are not depdendent on each other should be started concurrently.
 # def test_task_group_start_concurrently():

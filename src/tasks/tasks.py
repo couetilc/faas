@@ -1,7 +1,8 @@
 import threading
 import networkx
 import itertools
-
+import enum
+import queue
 
 class TaskGroup:
     class Exception(Exception):
@@ -15,9 +16,15 @@ class TaskGroup:
         def __init__(self, task, param = None):
             self.task = task
 
+    class TaskState(enum.Enum):
+        UNSTARTED = 1
+        STARTED = 2
+        FINISHED = 3
+
     def __init__(self, *args):
         self.tasks = set(args)
         self.graph = networkx.DiGraph()
+        self.eventq = queue.Queue
         # TODO: manage stdout and stderr for all child tasks.
         # TODO: create some kind of cancel Event, or perhaps a Queue.
         pass
@@ -26,8 +33,16 @@ class TaskGroup:
         pass
     def start(self):
         for task in networkx.topological_sort(self.graph):
+            # TODO: I think I need to check if the task is the head of an edge, that is,
+            # it needs to wait for the tail to finish.
+            # if self.graph.is_head(task):
+            #   tail = self.graph.get_tail(task)
+            #   tail.wait()
+            #   for arg in task.args:
+            #     if TaskGroup.Dependency.match(tail, arg):
+            #       TaskGroup.Dependency.inject(task, tail, arg) # something like this
             task.start()
-        # TODO: start each start task
+            s = "res: " + str(task.thread.result)
         # TODO: store start time of task graph
         # TODO: store end time of task graph
         pass
@@ -86,7 +101,6 @@ class TaskGroup:
             self.tasks.difference_update(args)
             self.graph.remove_nodes_from(args)
             raise e
-
     def remove_tasks(self, *args):
         self.tasks.difference_update(args)
         self.graph.remove_nodes_from(args)
@@ -143,12 +157,27 @@ class Task:
     class Thread(threading.Thread):
         count = itertools.count(0) # not sure what maximum value is, internet suggests infinite
         lock = threading.Lock()
-        def __init__(self, task: Task, *args, **kwargs):
+        def __init__(self, task: Task, on_success, *args, **kwargs):
             super().__init__(*args, **kwargs)
             with Task.Thread.lock:
                 self.id = next(Task.Thread.count)
             self.name = f"TaskThread-{self.id}"
             self.task_id = task.id
+            self.result = None
+            self.on_success = on_success
+        def run(self):
+            """
+            Override threading.Thread.run to store return value in self.result.
+            (see: inspect.getsource(threading.Thread))
+            """
+            try:
+                if self._target is not None:
+                    self.result = self._target(*self._args, **self._kwargs)
+                    if self.on_success:
+                        self.on_success(self.result)
+                    # TODO: publish to task group queue? or have hooks?
+            finally:
+                del self._target, self._args, self._kwargs
 
     def __init__(self, target = None, name = None, args = list(), kwargs = dict()):
         self.id = id(self)
@@ -161,10 +190,17 @@ class Task:
             self.name = self.target.__name__
         else:
             self.name = f"lambda:{self.id}"
+        self.hooks = {'on_success': set()}
     def __str__(self):
         return f"Task[{self.name}]"
     def start(self):
-        self.thread = Task.Thread(task=self, target=self.target,args=(),kwargs={})
+        self.thread = Task.Thread(
+            task=self,
+            target=self.target,
+            on_success = lambda *a, **kw: self.trigger_hook('on_success', *a, **kw),
+            args=(),
+            kwargs={},
+        )
         print(f"starting [Task: {self.id}] [Thread: {self.thread.id}]")
         self.thread.start()
     def wait(self, timeout = None):
@@ -172,5 +208,16 @@ class Task:
     def set_args(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
+    def add_hook(self, hook, fn):
+        if hook not in self.hooks:
+            raise Task.Exception(f'Request to add unknown hook "{hook}" ')
+        self.hooks[hook].add(fn)
+    def remove_hook(self, hook, fn):
+        if hook not in self.hooks:
+            raise Task.Exception(f'Request to remove unknown hook "{hook}" ')
+        self.hooks[hook].discard(fn)
+    def trigger_hook(self, hook, *args, **kwargs):
+        for fn in self.hooks[hook]:
+            fn(*args, **kwargs)
 
 
