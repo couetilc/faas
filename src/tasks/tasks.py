@@ -32,18 +32,24 @@ class TaskGroup:
         # TODO: print the TaskGraph as a mermaid diagram representation.
         pass
     def start(self):
+        self.results = {}
         for task in networkx.topological_sort(self.graph):
-            # TODO: I think I need to check if the task is the head of an edge, that is,
-            # it needs to wait for the tail to finish.
-            # if self.graph.is_head(task):
-            #   tail = self.graph.get_tail(task)
-            #   tail.wait()
-            #   for arg in task.args:
-            #     if TaskGroup.Dependency.match(tail, arg):
-            #       TaskGroup.Dependency.inject(task, tail, arg) # something like this
-            task.start()
+            args = []
+            kwargs = {}
+            for arg in task.args:
+                if isinstance(arg, TaskGroup.Dependency):
+                    args.append(self.results[id(arg.task)])
+                else:
+                    args.append(arg)
+            for key in task.kwargs:
+                kwarg = task.kwargs[key]
+                if isinstance(kwarg, TaskGroup.Dependency):
+                    kwargs[key] = self.results[id(kwarg.task)]
+                else:
+                    kwargs[key] = kwarg
+            task.start(*args, **kwargs)
             task_id, result = self.eventq.get()
-            s = "res: " + str(result)
+            self.results[task_id] = result
         # TODO: store start time of task graph
         # TODO: store end time of task graph
         pass
@@ -204,14 +210,16 @@ class Task:
         self.hooks = {'on_success': set(), 'on_exception': set()}
     def __str__(self):
         return f"Task[{self.name}]"
-    def start(self):
+    def __repr__(self):
+        return f"Task(name={self.name},target={self.target})"
+    def start(self, *args, **kwargs):
         self.thread = Task.Thread(
             task=self,
             target=self.target,
             on_success = lambda *a, **kw: self.trigger_hook('on_success', *a, **kw),
             on_exception = lambda *a, **kw: self.trigger_hook('on_exception', *a, **kw),
-            args=(),
-            kwargs={},
+            args=args,
+            kwargs=kwargs,
         )
         print(f"starting [Task: {self.id}] [Thread: {self.thread.id}]")
         self.thread.start()

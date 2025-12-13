@@ -1,4 +1,5 @@
 import pytest
+import networkx
 import threading
 import contextlib
 import collections
@@ -298,7 +299,9 @@ def test_task_group_removes_tasks():
 def test_task_group_data_dependencies_are_ordered_args():
     group = TaskGroup()
     task1 = Task(name = '1')
-    task2 = Task(name = '2', args = [TaskGroup.Dependency(task1)])
+    task2 = Task(name = '2',
+                 args = [TaskGroup.Dependency(task1)],
+                 target = lambda x: None)
     group.add_tasks(task2, task1)
     with assert_tasks(nthread = 2, order = [task1, task2]):
         group.start()
@@ -307,7 +310,9 @@ def test_task_group_data_dependencies_are_ordered_args():
 def test_task_group_data_dependencies_are_ordered_kwargs():
     group = TaskGroup()
     task1 = Task(name = '1')
-    task2 = Task(name = '2', kwargs = {'data': TaskGroup.Dependency(task1)})
+    task2 = Task(name = '2',
+                 kwargs = {'data': TaskGroup.Dependency(task1)},
+                 target = lambda data: None)
     group.add_tasks(task2, task1)
     with assert_tasks(nthread = 2, order = [task1, task2]):
         group.start()
@@ -351,21 +356,6 @@ def test_task_group_data_dependency_with_cycle():
     assert not group.graph.has_edge(task1, task2)
     assert task1 not in group.graph
     assert task2 not in group.graph
-
-def test_task_group_data_dependencies_share_data():
-    group = TaskGroup()
-    task1 = Task(name = '1', target=lambda: 'foo')
-    def assert_foo(data):
-        assert data == 'foo'
-    task2 = Task(
-        name = '2',
-        target=assert_foo,
-    )
-    task2.set_args(data = TaskGroup.Dependency(task1))
-    group.add_tasks(task2, task1)
-    with assert_tasks(nthread = 2, order = [task1, task2]):
-        group.start()
-        group.wait()
 
 def test_task_hook_on_success():
     task1 = Task(name = '1', target = lambda: 'foo')
@@ -419,6 +409,36 @@ def test_order():
     group = TaskGroup()
     task1 = Task(name = '1', target = lambda: 'foo')
     task2 = Task(name = '2', target = lambda: 'bar')
+
+def test_task_group_data_dependencies_share_data_args():
+    group = TaskGroup()
+    task1 = Task(name = '1', target=lambda: 'foo')
+    def assert_foo(data):
+        assert data == 'foo'
+    task2 = Task(
+        name = '2',
+        target=assert_foo,
+    )
+    task2.set_args(TaskGroup.Dependency(task1))
+    group.add_tasks(task2, task1)
+    with assert_tasks(nthread = 2, order = [task1, task2]):
+        group.start()
+        group.wait()
+
+def test_task_group_data_dependencies_share_data_kwargs():
+    group = TaskGroup()
+    task1 = Task(name = '1', target=lambda: 'foo')
+    def assert_foo(data):
+        assert data == 'foo'
+    task2 = Task(
+        name = '2',
+        target=assert_foo,
+    )
+    task2.set_args(data = TaskGroup.Dependency(task1))
+    group.add_tasks(task2, task1)
+    with assert_tasks(nthread = 2, order = [task1, task2]):
+        group.start()
+        group.wait()
 
 # TODO: tasks that are not depdendent on each other should be started concurrently.
 # def test_task_group_start_concurrently():
