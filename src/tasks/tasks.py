@@ -16,12 +16,41 @@ class TaskGroup:
         def __init__(self, task, param = None):
             self.task = task
 
+    class ControlLoop():
+        def __init__(self):
+            self.results = {}
+        def task_start(self, task):
+            args = []
+            kwargs = {}
+            for arg in task.args:
+                if isinstance(arg, TaskGroup.Dependency):
+                    args.append(self.results[id(arg.task)])
+                else:
+                    args.append(arg)
+            for key in task.kwargs:
+                kwarg = task.kwargs[key]
+                if isinstance(kwarg, TaskGroup.Dependency):
+                    kwargs[key] = self.results[id(kwarg.task)]
+                else:
+                    kwargs[key] = kwarg
+            task.start(*args, **kwargs)
+        def task_is_ready(self, task):
+            for arg in task.args:
+                if isinstance(arg, TaskGroup.Dependency):
+                    if id(arg.task) not in self.results:
+                        return False
+            for key in task.kwargs:
+                kwarg = task.kwargs[key]
+                if isinstance(kwarg, TaskGroup.Dependency):
+                    if id(kwarg.task) not in self.results:
+                        return False
+            return True
+
     def __init__(self, *args):
         self.tasks = set(args)
         self.graph = networkx.DiGraph()
         self.eventq = queue.Queue()
         # TODO: manage stdout and stderr for all child tasks.
-        # TODO: create some kind of cancel Event, or perhaps a Queue.
         pass
     def __str__(self):
         # TODO: print the TaskGraph as a mermaid diagram representation.
@@ -44,31 +73,71 @@ class TaskGroup:
             raise TaskGroup.Exception(
                 'Called start() on an empty TaskGroup. '
                 'You cannot start an empty TaskGroup.')
-        self.results = {}
-        waiting = next(networkx.topological_generations(self.graph))
-        while True:
-            for task in waiting:
-                if self._task_is_ready(task):
-                    self._task_start(task)
-                    waiting.remove(task)
-                    waiting += self.graph.successors(task)
-            if len(waiting) > 0:
-                task_id, result = self.eventq.get(timeout=1) # blocks and defers CPU time
-                self.results[task_id] = result
-                self.eventq.task_done()
-            else:
-                break
+
+        # TODO: do I run this loop in a control thread? So .start() returns earlier to
+        # main? I need to lock datastructures at that point. Currently datastructures
+        # are only modified from a single thread. Would have to do this when I implementation .cancel()
+        # also tests would require an update I believe, otherwise the assert_tasks
+        # helper will count the control thread as a subthread.
+        self.results = {} # TODO: lock
+        self.control_thread = threading.Thread(target=self.control_loop_concurrent)
+        self.control_thread.name = 'TaskGroup.control_thread'
+        self.control_thread.start()
+
         # TODO: store start time of task graph
         # TODO: store end time of task graph
         # TODO: store all task start times and end times
         pass
+    def control_loop_concurrent(self):
+        loop = TaskGroup.ControlLoop()
+        waiting = next(networkx.topological_generations(self.graph))
+        while True:
+            print(f"\nWAITING {waiting}\n")
+            # make sure to copy the set, otherwise items are skipped.
+            for task in waiting.copy():
+                print(f"- task {task}")
+                if loop.task_is_ready(task):
+                    print(f"\nSTARTING TASK {task}\n")
+                    loop.task_start(task)
+                    waiting.remove(task)
+                    waiting += self.graph.successors(task)
+            if len(waiting) > 0:
+                print(f"\nGETTING QUEUE\n")
+                task_id, result = self.eventq.get() # blocks and defers CPU time
+                loop.results[task_id] = result
+                self.eventq.task_done()
+            else:
+                break
+        for task in self.tasks:
+            task.wait()
+    def control_loop_serial(self):
+        loop = TaskGroup.ControlLoop()
+        # need to figure out how to make the concurrency test fail for this one
+        for task in networkx.topological_sort(self.graph):
+            args = []
+            kwargs = {}
+            for arg in task.args:
+                if isinstance(arg, TaskGroup.Dependency):
+                    args.append(loop.results[id(arg.task)])
+                else:
+                    args.append(arg)
+            for key in task.kwargs:
+                kwarg = task.kwargs[key]
+                if isinstance(kwarg, TaskGroup.Dependency):
+                    kwargs[key] = loop.results[id(kwarg.task)]
+                else:
+                    kwargs[key] = kwarg
+            task.start(*args, **kwargs)
+            task_id, result = self.eventq.get()
+            loop.results[task_id] = result
+        for task in self.tasks:
+            task.wait()
     def cancel():
         # TODO: will cancel all tasks in the graph (basically, wait for current one to
         # stop and not to start other ones)
         pass
     def wait(self):
-        for task in self.tasks:
-            task.wait()
+        self.control_thread.join()
     def set_stdout():
         # TODO: will set stdout file for task group
         pass
@@ -76,6 +145,7 @@ class TaskGroup:
         # TODO: will set stderr file for task group
         pass
     def poll():
+        # TODO: requires .cancel() to be implemented.
         # TODO: returns true if still executing, false otherwise (I think this is the convention? I could ask AI for suggestion for this API)
         pass
     def add_precedence(self, *tasks):
@@ -132,32 +202,6 @@ class TaskGroup:
                 'Cycle detected. '
                 'Ordering constraints must not introduce cycles. '
                 'A TaskGroup must be a directed acyclic graph.')
-    def _task_start(self, task):
-        args = []
-        kwargs = {}
-        for arg in task.args:
-            if isinstance(arg, TaskGroup.Dependency):
-                args.append(self.results[id(arg.task)])
-            else:
-                args.append(arg)
-        for key in task.kwargs:
-            kwarg = task.kwargs[key]
-            if isinstance(kwarg, TaskGroup.Dependency):
-                kwargs[key] = self.results[id(kwarg.task)]
-            else:
-                kwargs[key] = kwarg
-        task.start(*args, **kwargs)
-    def _task_is_ready(self, task):
-        for arg in task.args:
-            if isinstance(arg, TaskGroup.Dependency):
-                if id(arg.task) not in self.results:
-                    return False
-        for key in task.kwargs:
-            kwarg = task.kwargs[key]
-            if isinstance(kwarg, TaskGroup.Dependency):
-                if id(kwarg.task) not in self.results:
-                    return False
-        return True
 
 
 class Task:

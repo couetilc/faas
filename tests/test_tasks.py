@@ -1,4 +1,5 @@
 import pytest
+import time
 import networkx
 import threading
 import contextlib
@@ -78,6 +79,8 @@ def assert_tasks(*, nthread = None, order = None):
             self.threads = set()
             self.tasks = collections.defaultdict(list)
         def track(self, thread):
+            if thread.name == 'TaskGroup.control_thread':
+                return
             with self.lock:
                 if thread.id not in self.threads:
                     self.threads.add(thread.id)
@@ -98,7 +101,7 @@ def assert_tasks(*, nthread = None, order = None):
         tracker.track(threading.current_thread())
 
     threading.settrace(trace_function)
-    yield
+    yield tracker
     threading.settrace(None)
 
     if nthread != None:
@@ -448,11 +451,25 @@ def test_task_group_started_with_no_tasks():
 
 # TODO: tasks that are not depdendent on each other should be started concurrently.
 def test_task_group_start_concurrently():
-    """
-    """
+    group = TaskGroup()
+    task1 = Task(name = '1', target = lambda: time.sleep(.2))
+    task2 = Task(name = '2', target = lambda: time.sleep(.2))
+    group.add_tasks(task1, task2)
     # not sure how to test this, but my implementation should be working?
+    # maybe like how nthreads counts threads I could do that? Have tasks with a sleep
+    with assert_tasks(nthread = 2) as tracker:
+        group.start()
+        time.sleep(.1)
+        assert tracker.nthread == 2
+        group.wait()
     pass
 
+# TODO: there is not too much left. I want to:
+# - finished the above test that tasks are started concurrently
+# - track start times and end times for tasks and task groups
+# - print debugging output to stdout, stderr, that is, capture any thread output. I
+# think? Basically, what do I want my verbose output to be?
+#
 
 # qemu_vm = QemuVmTask(image = TaskGroup.Dependency(overlay_image, 'image'))
 # port_ready = PortReadyTask(port = TaskGroup.Dependency(vm, 'ssh_port'))
