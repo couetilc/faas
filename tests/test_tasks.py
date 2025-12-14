@@ -449,23 +449,30 @@ def test_task_group_started_with_no_tasks():
         group.start()
     assert 'empty TaskGroup' in str(e)
 
-# TODO: tasks that are not depdendent on each other should be started concurrently.
 def test_task_group_start_concurrently():
+    """
+    To test threads are started concurrently, we start two sleeping threads and check
+    the started thread count before the sleeps elapse. If the tasks are executed
+    concurrently, thread count should be greater than one. If the tasks are executed
+    serially, thread count should only be one, the second task isn't started until the
+    first task has finished, which will be after our test thread checks the thread
+    count.
+    """
     group = TaskGroup()
     task1 = Task(name = '1', target = lambda: time.sleep(.2))
     task2 = Task(name = '2', target = lambda: time.sleep(.2))
     group.add_tasks(task1, task2)
-    # not sure how to test this, but my implementation should be working?
-    # maybe like how nthreads counts threads I could do that? Have tasks with a sleep
     with assert_tasks(nthread = 2) as tracker:
         group.start()
+        # give time for threads to start
         time.sleep(.1)
+        # at this point threads are started but sleeping.
         assert tracker.nthread == 2
+        # assertion is not true when serial, not enough time elapsed for a task to
+        # finish, implying the next one was not started.
         group.wait()
-    pass
 
 # TODO: there is not too much left. I want to:
-# - finished the above test that tasks are started concurrently
 # - track start times and end times for tasks and task groups
 # - print debugging output to stdout, stderr, that is, capture any thread output. I
 # think? Basically, what do I want my verbose output to be?
