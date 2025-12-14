@@ -440,9 +440,18 @@ def test_task_group_data_dependencies_share_data_kwargs():
         group.start()
         group.wait()
 
+def test_task_group_started_with_no_tasks():
+    group = TaskGroup()
+    with pytest.raises(TaskGroup.Exception) as e:
+        group.start()
+    assert 'empty TaskGroup' in str(e)
+
 # TODO: tasks that are not depdendent on each other should be started concurrently.
-# def test_task_group_start_concurrently():
-#     pass
+def test_task_group_start_concurrently():
+    """
+    """
+    # not sure how to test this, but my implementation should be working?
+    pass
 
 
 # qemu_vm = QemuVmTask(image = TaskGroup.Dependency(overlay_image, 'image'))
