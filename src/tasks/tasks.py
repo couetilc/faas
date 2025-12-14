@@ -16,11 +16,6 @@ class TaskGroup:
         def __init__(self, task, param = None):
             self.task = task
 
-    class TaskState(enum.Enum):
-        UNSTARTED = 1
-        STARTED = 2
-        FINISHED = 3
-
     def __init__(self, *args):
         self.tasks = set(args)
         self.graph = networkx.DiGraph()
