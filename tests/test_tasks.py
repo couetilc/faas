@@ -79,7 +79,7 @@ def assert_tasks(*, nthread = None, order = None):
             self.threads = set()
             self.tasks = collections.defaultdict(list)
         def track(self, thread):
-            if thread.name == 'TaskGroup.control_thread':
+            if thread.name == 'TaskGroup.control_loop':
                 return
             with self.lock:
                 if thread.id not in self.threads:
