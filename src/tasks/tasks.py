@@ -114,7 +114,7 @@ class TaskGroup:
                         args, kwargs = self.task_get_args(task)
                         task.start(*args, **kwargs)
                         waiting.remove(task)
-                        waiting.update(self.graph.successors(task))
+                        waiting += self.graph.successors(task)
                 if len(waiting) > 0:
                     task_id, result = self.eventq.get() # blocks and defers CPU time
                     with self.lock_result:
