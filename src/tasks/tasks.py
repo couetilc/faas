@@ -9,12 +9,40 @@ class TaskGroup:
         pass
 
     class Dependency():
-        # TODO: have two interfaces
-        # Task(arg = TaskGroup.Dependency(task)) # stores all of task output in single variable
-        # Task(arg = TaskGroup.Dependency(task, param)) # stores "param" of output in single variable
-        # but what about a return value that isn't a dictionary? Like a single value, or a tuple?
+        """
+        Set a Task's argument to be the result of another task
+
+        ```py
+        TaskGroup.Dependency(task=Task())
+        ```
+
+        or if the Task returns a dictionary, set the argument to a value within the dict
+
+        ```py
+        TaskGroup.Dependency(task=Task(),param="data")
+        ```
+        """
         def __init__(self, task, param = None):
             self.task = task
+            self.param = param
+        def __str__(self):
+            if self.param:
+                return f'TaskGroup.Dependency(task={self.task},param={self.param})'
+            else:
+                return f'TaskGroup.Dependency(task={self.task})'
+        def is_ready(self, results):
+            return id(self.task) in results
+        def resolve(self, results):
+            if self.param:
+                result = results[id(self.task)]
+                if self.param in result:
+                    return result[self.param]
+                else:
+                    raise TaskGroup.Exception(
+                        f'Unable to resolve {self}. '
+                        f'{self.task} result does not contain parameter "{self.param}"')
+            else:
+                return results[id(self.task)]
 
     class ControlLoop:
         def __init__(self, tasks, graph):
@@ -43,12 +71,12 @@ class TaskGroup:
             with self.lock_result:
                 for arg in task.args:
                     if isinstance(arg, TaskGroup.Dependency):
-                        if id(arg.task) not in self.results:
+                        if not arg.is_ready(self.results):
                             return False
                 for key in task.kwargs:
                     kwarg = task.kwargs[key]
                     if isinstance(kwarg, TaskGroup.Dependency):
-                        if id(kwarg.task) not in self.results:
+                        if not kwarg.is_ready(self.results):
                             return False
                 return True
         def task_get_args(self, task):
@@ -62,13 +90,13 @@ class TaskGroup:
                 kwargs = {}
                 for arg in task.args:
                     if isinstance(arg, TaskGroup.Dependency):
-                        args.append(self.results[id(arg.task)])
+                        args.append(arg.resolve(self.results))
                     else:
                         args.append(arg)
                 for key in task.kwargs:
                     kwarg = task.kwargs[key]
                     if isinstance(kwarg, TaskGroup.Dependency):
-                        kwargs[key] = self.results[id(kwarg.task)]
+                        kwargs[key] = kwarg.resolve(self.results)
                     else:
                         kwargs[key] = kwarg
                 return args, kwargs
@@ -285,7 +313,6 @@ class Task:
             try:
                 if self._target is not None:
                     self.result = self._target(*self._args, **self._kwargs)
-                    print("preforming on success: ", self.task_id, ", ", self.result)
                     self.on_success((self.task_id, self.result))
                     # TODO: publish to task group queue? or have hooks?
             except Exception as e:
@@ -319,7 +346,6 @@ class Task:
             args=args,
             kwargs=kwargs,
         )
-        print(f"starting {self} [task_id: {self.id}] [thread_id: {self.thread.id}]")
         self.thread.start()
     def wait(self, timeout = None):
         self.thread.join(timeout)

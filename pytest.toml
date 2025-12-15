@@ -2,3 +2,6 @@
 addopts = ["--import-mode=importlib"] # see https://docs.pytest.org/en/stable/explanation/goodpractices.html#which-import-mode
 strict = true
 pythonpath = ["src"]
+markers = [
+    "disable_main_thread_exceptions: Mark to disable the specific autouse fixture for certain tests."
+]
