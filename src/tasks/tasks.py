@@ -321,11 +321,11 @@ class Task:
             finally:
                 del self._target, self._args, self._kwargs
 
-    def __init__(self, target = None, name = None, args = list(), kwargs = dict()):
+    def __init__(self, target = None, name = None, args = None, kwargs = None):
         self.id = id(self)
         self.target = target if target else lambda: None
-        self.args = args
-        self.kwargs = kwargs
+        self.args = args if args else []
+        self.kwargs = kwargs if kwargs else {}
         if name:
             self.name = name
         elif self.target.__name__ != '<lambda>':

@@ -17,7 +17,7 @@ def assert_no_threads_remain():
 
 @pytest.fixture(autouse=True)
 def fixture_assert_no_threads_remain():
-    assert_no_threads_remain()
+    yield from assert_no_threads_remain()
 
 @contextlib.contextmanager
 def assert_tasks(*, nthread = None, order = None):
@@ -90,7 +90,7 @@ def assert_tasks(*, nthread = None, order = None):
             return len(self.threads)
         def assert_nthread(self, n):
             assert self.nthread == n, (
-                f"Started {tracker.nthread} non-main thread(s), expected {nthread})")
+                f"Started {tracker.nthread} non-main thread(s), expected {nthread}")
         def assert_order(self, before: Task, after: Task):
             assert min(self.tasks[before.id]) < min(self.tasks[after.id]), (
                 'task "{1}" came before "{0}", expected "{0}" to come before "{1}"'.format(before, after))
@@ -416,11 +416,6 @@ def test_task_hook_unknown():
         task1.remove_hook('bar', lambda: None)
     assert 'remove unknown hook "bar"' in str(e)
 
-def test_order():
-    group = TaskGroup()
-    task1 = Task(name = '1', target = lambda: 'foo')
-    task2 = Task(name = '2', target = lambda: 'bar')
-
 def test_task_group_data_dependencies_share_data_args():
     group = TaskGroup()
     task1 = Task(name = '1', target=lambda: 'foo')
@@ -523,6 +518,7 @@ def test_task_group_dependency_param_no_match():
             raise exceptions.get()
 
 # TODO: there is not too much left. I want to:
+# - implement .cancel and .errors like in above test
 # - track start times and end times for tasks and task groups
 # - print debugging output to stdout, stderr, that is, capture any thread output. I
 # think? Basically, what do I want my verbose output to be?
