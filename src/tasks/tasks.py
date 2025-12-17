@@ -52,6 +52,7 @@ class TaskGroup:
             self.lock_result = threading.Lock()
             self.results = {}
             self.errors = []
+            self.flag_cancel = threading.Event()
         def start(self):
             self.thread = threading.Thread(target=self.loop_concurrent)
             self.thread.name = 'TaskGroup.control_loop'
@@ -107,7 +108,7 @@ class TaskGroup:
             waiting and then starts dependent tasks when their predecessor has finished.
             """
             waiting = next(networkx.topological_generations(self.graph))
-            while True:
+            while not self.flag_cancel.is_set():
                 # make sure to copy the set, otherwise items are skipped.
                 for task in waiting.copy():
                     if self.task_is_ready(task):
@@ -262,6 +263,8 @@ class TaskGroup:
         return self.control_loop.errors
     def results(self):
         return self.control_loop.results
+    def cancel(self):
+        self.control_loop.flag_cancel.set()
 
 
 class Task:

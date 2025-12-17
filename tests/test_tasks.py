@@ -540,6 +540,17 @@ def test_task_group_collects_errors():
     group.wait()
     assert len(group.errors()) == 2
 
+def test_task_group_cancels_tasks():
+    group = TaskGroup()
+    task1 = Task(name = '1', target = lambda: time.sleep(.1))
+    task2 = Task(name = '2', target = lambda: time.sleep(.1))
+    group.add_tasks(task1)
+    group.add_precedence(task1, task2)
+    with assert_tasks(nthread = 1):
+        group.start()
+        group.cancel()
+        group.wait()
+
 
 # TODO: there is not too much left. I want to:
 # - implement .cancel and .errors like in above test
