@@ -517,6 +517,29 @@ def test_task_group_dependency_param_no_match():
         while not exceptions.empty():
             raise exceptions.get()
 
+def test_task_group_collects_error():
+    group = TaskGroup()
+    exc = Exception()
+    def raise_error():
+        raise exc
+    task = Task(name = '1', target = raise_error)
+    group.add_tasks(task)
+    group.start()
+    group.wait()
+    assert len(group.errors()) > 0
+    assert exc in group.errors()
+
+def test_task_group_collects_errors():
+    group = TaskGroup()
+    def raise_error():
+        raise Exception()
+    task1 = Task(name = '1', target = raise_error)
+    task2 = Task(name = '2', target = raise_error)
+    group.add_tasks(task1, task2)
+    group.start()
+    group.wait()
+    assert len(group.errors()) == 2
+
 
 # TODO: there is not too much left. I want to:
 # - implement .cancel and .errors like in above test

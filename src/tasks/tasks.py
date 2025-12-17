@@ -51,6 +51,7 @@ class TaskGroup:
             self.eventq = queue.Queue()
             self.lock_result = threading.Lock()
             self.results = {}
+            self.errors = []
         def start(self):
             self.thread = threading.Thread(target=self.loop_concurrent)
             self.thread.name = 'TaskGroup.control_loop'
@@ -118,13 +119,22 @@ class TaskGroup:
                 if len(waiting) > 0:
                     task_id, result = self.eventq.get() # blocks and defers CPU time
                     with self.lock_result:
-                        self.results[task_id] = result
+                        if isinstance(result, Exception):
+                            self.errors.append(result)
+                        else:
+                            self.results[task_id] = result
                     self.eventq.task_done()
                 else:
+                    # exit early, no more data dependencies to wait and resolve
                     break
             for task in self.tasks:
                 task.wait()
                 self.task_unregister_hooks(task)
+            # check remaining task results for any exceptions
+            while not self.eventq.empty():
+                task_id, result = self.eventq.get()
+                if isinstance(result, Exception):
+                    self.errors.append(result)
         def loop_serial(self):
             """
             This control loop is serial. It executes tasks one by one, and must wait for the
@@ -136,7 +146,10 @@ class TaskGroup:
                 task.start(*args, **kwargs)
                 task_id, result = self.eventq.get()
                 with self.lock_result:
-                    self.results[task_id] = result
+                    if isinstance(result, Exception):
+                        self.errors.append(result)
+                    else:
+                        self.results[task_id] = result
             for task in self.tasks:
                 task.wait()
                 self.task_unregister_hooks(task)
@@ -144,7 +157,6 @@ class TaskGroup:
     def __init__(self, *args):
         self.tasks = set(args)
         self.graph = networkx.DiGraph()
-        self.eventq = queue.Queue()
         # TODO: manage stdout and stderr for all child tasks.
         pass
     def __str__(self):
@@ -236,9 +248,6 @@ class TaskGroup:
                 self.graph.remove_edge(*edge)
             self.tasks.difference_update(args)
             self.graph.remove_nodes_from(args)
-            for task in args:
-                task.remove_hook('on_success', self.eventq.put)
-                task.remove_hook('on_exception', self.eventq.put)
             raise e
     def remove_tasks(self, *args):
         self.tasks.difference_update(args)
@@ -249,6 +258,10 @@ class TaskGroup:
                 'Cycle detected. '
                 'Ordering constraints must not introduce cycles. '
                 'A TaskGroup must be a directed acyclic graph.')
+    def errors(self):
+        return self.control_loop.errors
+    def results(self):
+        return self.control_loop.results
 
 
 class Task:
@@ -317,7 +330,6 @@ class Task:
                     # TODO: publish to task group queue? or have hooks?
             except Exception as e:
                 self.on_exception((self.task_id, e))
-                raise e
             finally:
                 del self._target, self._args, self._kwargs
 
