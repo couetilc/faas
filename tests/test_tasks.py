@@ -252,6 +252,7 @@ def test_task_group_precedence_with_self_loop():
     group = TaskGroup()
     task1 = Task(name = '1')
     task2 = Task(name = '2')
+    group.add_tasks(task1, task2)
     with pytest.raises(TaskGroup.Exception) as e:
         group.add_precedence(task1, task1)
     assert 'Cycle detected' in str(e)
@@ -263,6 +264,7 @@ def test_task_group_precedence_with_cycles():
     group = TaskGroup()
     task1 = Task(name = '1')
     task2 = Task(name = '2')
+    group.add_tasks(task1, task2)
     with pytest.raises(TaskGroup.Exception) as e:
         group.add_precedence(task1, task2, task1)
     assert 'Cycle detected' in str(e)
@@ -544,14 +546,63 @@ def test_task_group_cancels_tasks():
     group = TaskGroup()
     task1 = Task(name = '1', target = lambda: time.sleep(.1))
     task2 = Task(name = '2', target = lambda: time.sleep(.1))
-    group.add_tasks(task1)
+    group.add_tasks(task1, task2)
     group.add_precedence(task1, task2)
-    with assert_tasks(nthread = 1):
+    with assert_tasks() as tracker:
         group.start()
         group.cancel()
         group.wait()
+        assert tracker.nthread < 2
 
+# def test_task_group_logs_group_execution(capsys):
+#     group = TaskGroup()
+#     task1 = Task(name = 'foo')
+#     group.add_tasks(task1)
+#     group.start()
+#     group.wait()
+#     captured = capsys.readouterr()
+#     assert 'Starting TaskGroup' in captured.out
+#
+# def test_task_group_precedence_unknown_task():
+#     group = TaskGroup()
+#     task1 = Task()
+#     task2 = Task()
+#     group.add_tasks(task1)
+#     with pytest.raises(TaskGroup.Exception) as e:
+#         group.add_precedence(task1, task2)
+#     assert 'unknown task' in str(e)
 
+# def test_task_group_logs_task_execution(capsys):
+#     group = TaskGroup()
+#     task1 = Task(name = 'foo')
+#     group.add_tasks(task1)
+#     group.start()
+#     group.wait()
+#     captured = capsys.readouterr()
+#     assert 'Running Task[foo]' in captured.out
+#
+# def test_task_target_async():
+#     group = TaskGroup()
+#     event = threading.Event()
+#     async def event():
+#         event.set()
+#     task1 = Task(name = 'async', target=event)
+#     with assert_tasks(nthread = 1):
+#         group.start()
+#         group.wait()
+#     assert event.is_set()
+#
+# def test_task_target_subprocess():
+#     group = TaskGroup()
+#     event = threading.Event()
+#     def subprocess():
+#         subprocess.run('bash -c "echo foo"')
+#     task1 = Task(name = 'subprocess', target=subprocess)
+#     with assert_tasks(nthread = 1):
+#         group.start()
+#         group.wait()
+#     assert event.is_set()
+#
 # TODO: there is not too much left. I want to:
 # - implement .cancel and .errors like in above test
 # - track start times and end times for tasks and task groups

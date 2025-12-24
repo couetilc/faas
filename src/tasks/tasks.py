@@ -3,6 +3,8 @@ import networkx
 import itertools
 import enum
 import queue
+import time
+import sys
 
 class TaskGroup:
     class Exception(Exception):
@@ -54,6 +56,7 @@ class TaskGroup:
             self.errors = []
             self.flag_cancel = threading.Event()
         def start(self):
+            self.loop_start = time.perf_counter()
             self.thread = threading.Thread(target=self.loop_concurrent)
             self.thread.name = 'TaskGroup.control_loop'
             self.thread.start()
@@ -104,9 +107,11 @@ class TaskGroup:
                 return args, kwargs
         def loop_concurrent(self):
             """
-            This control loop is concurrent. It starts independent tasks immediately without
-            waiting and then starts dependent tasks when their predecessor has finished.
+            This control loop is concurrent. It starts independent tasks immediately
+            without waiting and then starts dependent tasks when their predecessor has
+            finished.
             """
+            print('Starting TaskGroup')
             waiting = next(networkx.topological_generations(self.graph))
             while not self.flag_cancel.is_set():
                 # make sure to copy the set, otherwise items are skipped.
@@ -136,12 +141,17 @@ class TaskGroup:
                 task_id, result = self.eventq.get()
                 if isinstance(result, Exception):
                     self.errors.append(result)
+            self.loop_end = time.perf_counter()
+            # print(f'Finished TaskGroup [duration={
+                # self.loop_end - self.loop_start:.4f}]')
         def loop_serial(self):
             """
             This control loop is serial. It executes tasks one by one, and must wait for the
             current task to finish before starting the next.
             """
             for task in networkx.topological_sort(self.graph):
+                if self.flag_cancel.is_set():
+                    break
                 self.task_register_hooks(task)
                 args, kwargs = self.task_get_args(task)
                 task.start(*args, **kwargs)
@@ -155,19 +165,15 @@ class TaskGroup:
                 task.wait()
                 self.task_unregister_hooks(task)
 
-    def __init__(self, *args):
+    def __init__(self, name = None, *args):
         self.tasks = set(args)
         self.graph = networkx.DiGraph()
         # TODO: manage stdout and stderr for all child tasks.
         pass
     def __str__(self):
-        # TODO: print the TaskGraph as a mermaid diagram representation.
         pass
     def __repr__(self):
-        # TODO: print the TaskGraph as a set of function calls?
-        # I can annotate each edge with a type when I "add_edge"
-        # e.g. self.graph.add_edge(1, 2, type = 'data' or 'precedence')
-        # so I can reconstruct the required calls
+        # TODO: print the TaskGraph as a mermaid diagram representation.
         pass
     def start(self):
         """
@@ -215,7 +221,12 @@ class TaskGroup:
             raise TaskGroup.Exception(
                 'TaskGroup.add_precedence called with fewer than two arguments. '
                 'Precedence constraints must be expressed in terms of 2 or more tasks')
-        # self.add_tasks(*tasks) # TODO: tasks can be added through add_precedence
+        unknown_tasks = set(tasks).difference(self.tasks)
+        if len(unknown_tasks) > 0:
+            raise TaskGroup.Exception(
+                f'TaskGroup.add_precedence called with unknown task(s) '
+                f'"{', '.join(map(str, unknown_tasks))}". Tasks must be added to '
+                'TaskGroup with "add_tasks" before specifying constraints.')
         for i in range(len(tasks) - 1):
             self.graph.add_edge(tasks[i], tasks[i + 1])
         if exc := self.verify_constraints():
@@ -330,7 +341,6 @@ class Task:
                 if self._target is not None:
                     self.result = self._target(*self._args, **self._kwargs)
                     self.on_success((self.task_id, self.result))
-                    # TODO: publish to task group queue? or have hooks?
             except Exception as e:
                 self.on_exception((self.task_id, e))
             finally:
@@ -351,7 +361,7 @@ class Task:
     def __str__(self):
         return f"Task[{self.name}]"
     def __repr__(self):
-        return f"Task(name={self.name},target={self.target})"
+        return f"Task(name={self.name},target={self.target.__name__})"
     def start(self, *args, **kwargs):
         self.thread = Task.Thread(
             task=self,
@@ -363,7 +373,8 @@ class Task:
         )
         self.thread.start()
     def wait(self, timeout = None):
-        self.thread.join(timeout)
+        if hasattr(self, 'thread'):
+            self.thread.join(timeout)
     def set_args(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
