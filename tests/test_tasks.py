@@ -84,7 +84,7 @@ def assert_tasks(*, nthread = None, order = None):
             with self.lock:
                 if thread.id not in self.threads:
                     self.threads.add(thread.id)
-                    self.tasks[thread.task_id].append(thread.id)
+                    self.tasks[thread.task].append(thread.id)
         @property
         def nthread(self):
             return len(self.threads)
@@ -92,7 +92,7 @@ def assert_tasks(*, nthread = None, order = None):
             assert self.nthread == n, (
                 f"Started {tracker.nthread} non-main thread(s), expected {nthread}")
         def assert_order(self, before: Task, after: Task):
-            assert min(self.tasks[before.id]) < min(self.tasks[after.id]), (
+            assert min(self.tasks[before]) < min(self.tasks[after]), (
                 'task "{1}" came before "{0}", expected "{0}" to come before "{1}"'.format(before, after))
 
     tracker = ThreadTracker()
@@ -373,8 +373,8 @@ def test_task_group_data_dependency_with_cycle():
 def test_task_hook_on_success():
     task1 = Task(name = '1', target = lambda: 'foo')
     def assert_foo(event):
-        task_id, result = event
-        assert task_id == id(task1)
+        task, result = event
+        assert task == task1
         assert result == 'foo'
     task1.add_hook('on_success', assert_foo)
     with assert_tasks(nthread = 1):
@@ -384,12 +384,12 @@ def test_task_hook_on_success():
 def test_task_hook_on_success_multiple():
     task1 = Task(name = '1', target = lambda: 'foo')
     def assert_foo(event):
-        task_id, result = event
-        assert task_id == id(task1)
+        task, result = event
+        assert task == task1
         assert result == 'foo'
     def assert_not_bar(event):
-        task_id, result = event
-        assert task_id == id(task1)
+        task, result = event
+        assert task == task1
         assert result != 'bar'
     task1.add_hook('on_success', assert_foo)
     task1.add_hook('on_success', assert_not_bar)
@@ -400,8 +400,8 @@ def test_task_hook_on_success_multiple():
 def test_task_hook_removal():
     task1 = Task(name = '1', target = lambda: 'foo')
     def assert_not_foo(event):
-        task_id, result = event
-        task_id = id(task1)
+        task, result = event
+        assert task == task1
         assert result != 'foo'
     task1.add_hook('on_success', assert_not_foo)
     task1.remove_hook('on_success', assert_not_foo)
@@ -580,6 +580,15 @@ def test_task_group_logs_task_execution(capsys):
     group.wait()
     captured = capsys.readouterr()
     assert 'Running Task[foo]' in captured.out
+
+def test_task_group_logs_task_completion(capsys):
+    group = TaskGroup()
+    task1 = Task(name = 'foo')
+    group.add_tasks(task1)
+    group.start()
+    group.wait()
+    captured = capsys.readouterr()
+    assert 'Success completing Task[foo]' in captured.out
 
 # def test_task_target_async():
 #     group = TaskGroup()

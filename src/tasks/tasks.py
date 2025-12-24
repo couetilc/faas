@@ -33,10 +33,10 @@ class TaskGroup:
             else:
                 return f'TaskGroup.Dependency(task={self.task})'
         def is_ready(self, results):
-            return id(self.task) in results
+            return self.task in results
         def resolve(self, results):
             if self.param:
-                result = results[id(self.task)]
+                result = results[self.task]
                 if self.param in result:
                     return result[self.param]
                 else:
@@ -44,7 +44,7 @@ class TaskGroup:
                         f'Unable to resolve {self}. '
                         f'{self.task} result does not contain parameter "{self.param}"')
             else:
-                return results[id(self.task)]
+                return results[self.task]
 
     class ControlLoop:
         def __init__(self, tasks, graph):
@@ -124,12 +124,14 @@ class TaskGroup:
                         waiting.remove(task)
                         waiting += self.graph.successors(task)
                 if len(waiting) > 0:
-                    task_id, result = self.eventq.get() # blocks and defers CPU time
+                    task, result, endtime = self.eventq.get() # block and defer CPU time
                     with self.lock_result:
                         if isinstance(result, Exception):
+                            print(f'Error completing {task} ({endtime})')
                             self.errors.append(result)
                         else:
-                            self.results[task_id] = result
+                            print(f'Success completing {task} ({endtime})')
+                            self.results[task] = result
                     self.eventq.task_done()
                 else:
                     # exit early, no more data dependencies to wait and resolve
@@ -139,9 +141,12 @@ class TaskGroup:
                 self.task_unregister_hooks(task)
             # check remaining task results for any exceptions
             while not self.eventq.empty():
-                task_id, result = self.eventq.get()
+                task, result, endtime = self.eventq.get()
                 if isinstance(result, Exception):
+                    print(f'Error completing {task} ({endtime})')
                     self.errors.append(result)
+                else:
+                    print(f'Success completing {task} ({endtime})')
             self.loop_end = time.perf_counter()
             # print(f'Finished TaskGroup [duration={
                 # self.loop_end - self.loop_start:.4f}]')
@@ -156,12 +161,12 @@ class TaskGroup:
                 self.task_register_hooks(task)
                 args, kwargs = self.task_get_args(task)
                 task.start(*args, **kwargs)
-                task_id, result = self.eventq.get()
+                task, result = self.eventq.get()
                 with self.lock_result:
                     if isinstance(result, Exception):
                         self.errors.append(result)
                     else:
-                        self.results[task_id] = result
+                        self.results[task] = result
             for task in self.tasks:
                 task.wait()
                 self.task_unregister_hooks(task)
@@ -304,8 +309,8 @@ class Task:
     Note:
 
     Each task instance has a unique id. Each thread started by a task is assigned a
-    task-unique id that is stored on the thread object. The task id is also stored on
-    the thread object. This is used by utilities in the test suite to track task/thread
+    task-unique id that is stored on the thread object. The task is also stored on the
+    thread object. This is used by utilities in the test suite to track task/thread
     invocations during a unit test.
 
     ```py
@@ -314,7 +319,7 @@ class Task:
     task.start()
     task.thread # thread instance
     task.thread.id # thread instance id
-    task.thread.task_id # task instance id
+    task.thread.task # self-reference to containing task 
     ```
     """
 
@@ -329,7 +334,7 @@ class Task:
             with Task.Thread.lock:
                 self.id = next(Task.Thread.count)
             self.name = f"TaskThread-{self.id}"
-            self.task_id = task.id
+            self.task = task
             self.result = None
             self.on_success = on_success
             self.on_exception = on_exception
@@ -341,9 +346,9 @@ class Task:
             try:
                 if self._target is not None:
                     self.result = self._target(*self._args, **self._kwargs)
-                    self.on_success((self.task_id, self.result))
+                    self.on_success((self.task, self.result, time.perf_counter()))
             except Exception as e:
-                self.on_exception((self.task_id, e))
+                self.on_exception((self.task, e, time.perf_counter()))
             finally:
                 del self._target, self._args, self._kwargs
 
