@@ -554,33 +554,33 @@ def test_task_group_cancels_tasks():
         group.wait()
         assert tracker.nthread < 2
 
-# def test_task_group_logs_group_execution(capsys):
-#     group = TaskGroup()
-#     task1 = Task(name = 'foo')
-#     group.add_tasks(task1)
-#     group.start()
-#     group.wait()
-#     captured = capsys.readouterr()
-#     assert 'Starting TaskGroup' in captured.out
-#
-# def test_task_group_precedence_unknown_task():
-#     group = TaskGroup()
-#     task1 = Task()
-#     task2 = Task()
-#     group.add_tasks(task1)
-#     with pytest.raises(TaskGroup.Exception) as e:
-#         group.add_precedence(task1, task2)
-#     assert 'unknown task' in str(e)
+def test_task_group_logs_group_execution(capsys):
+    group = TaskGroup()
+    task1 = Task(name = 'foo')
+    group.add_tasks(task1)
+    group.start()
+    group.wait()
+    captured = capsys.readouterr()
+    assert 'Starting TaskGroup' in captured.out
 
-# def test_task_group_logs_task_execution(capsys):
-#     group = TaskGroup()
-#     task1 = Task(name = 'foo')
-#     group.add_tasks(task1)
-#     group.start()
-#     group.wait()
-#     captured = capsys.readouterr()
-#     assert 'Running Task[foo]' in captured.out
-#
+def test_task_group_precedence_unknown_task():
+    group = TaskGroup()
+    task1 = Task()
+    task2 = Task()
+    group.add_tasks(task1)
+    with pytest.raises(TaskGroup.Exception) as e:
+        group.add_precedence(task1, task2)
+    assert 'unknown task' in str(e)
+
+def test_task_group_logs_task_execution(capsys):
+    group = TaskGroup()
+    task1 = Task(name = 'foo')
+    group.add_tasks(task1)
+    group.start()
+    group.wait()
+    captured = capsys.readouterr()
+    assert 'Running Task[foo]' in captured.out
+
 # def test_task_target_async():
 #     group = TaskGroup()
 #     event = threading.Event()

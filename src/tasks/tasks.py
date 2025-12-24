@@ -119,6 +119,7 @@ class TaskGroup:
                     if self.task_is_ready(task):
                         self.task_register_hooks(task)
                         args, kwargs = self.task_get_args(task)
+                        print(f'Running {task}')
                         task.start(*args, **kwargs)
                         waiting.remove(task)
                         waiting += self.graph.successors(task)
